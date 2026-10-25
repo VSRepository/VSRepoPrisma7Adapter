@@ -5,31 +5,37 @@ import {
     CountResult,
     DecimalLike,
     DeepPartial,
+    getPostgresPlaceholder,
+    getSqlitePlaceholder,
+    getSqlServerPlaceholder,
     NumericKeys,
+    RestrictAdapterMethodOptions,
+    SimpleAdapterMethodOptions,
     VSLogger,
     VSLogLevel,
     VSRepoAdapter,
     VSRepoAdapterError,
     VSRepoTransactionOptions,
     VSRepoWhere,
+    WithIgnoreConflicts,
 } from "vsrepo";
-import { parsePrismaWhere } from "./parsers/where.parser";
-import { parsePrismaInclude } from "./parsers/include.parser";
-import { parsePrismaSelect } from "./parsers/select.parser";
-import { parsePrismaOrderBy } from "./parsers/order-by.parser";
-import { parsePrismaWriteData } from "./parsers/data.parser";
-import { mergeEntities } from "./resolvers/merge-entities.resolver";
-import { mapPrismaError } from "./resolvers/map-prisma-error.resolver";
-import { resolveProvider } from "./resolvers/resolve-provider.resolver";
-import { validateAdapterConfig } from "./validators/validate-adapter-config.validator";
-import { validatePrismaClient } from "./validators/validate-prisma-client.validator";
-import { AdapterRelations } from "./types/adapter-relations.type";
-import { VSRepoPrisma7AdapterConfig } from "./types/adapter-config.type";
-import { PrismaProvider } from "./types/prisma-provider.type";
-import { PrismaArgLike } from "./types/prisma-arg-like.type";
-import { PrismaRepositoryLike } from "./types/prisma-repository-like.type";
-import { PlainObject } from "./types/plain-object.type";
-import { Prisma7ClientLike } from "./types/prisma7-client-like.type";
+import { parsePrismaWhere } from "./parsers/where.parser.js";
+import { parsePrismaInclude } from "./parsers/include.parser.js";
+import { parsePrismaSelect } from "./parsers/select.parser.js";
+import { parsePrismaOrderBy } from "./parsers/order-by.parser.js";
+import { parsePrismaWriteData } from "./parsers/data.parser.js";
+import { mergeEntities } from "./resolvers/merge-entities.resolver.js";
+import { mapPrismaError } from "./resolvers/map-prisma-error.resolver.js";
+import { resolveProvider } from "./resolvers/resolve-provider.resolver.js";
+import { validateAdapterConfig } from "./validators/validate-adapter-config.validator.js";
+import { validatePrismaClient } from "./validators/validate-prisma-client.validator.js";
+import { AdapterRelations } from "./types/adapter-relations.type.js";
+import { VSRepoPrisma7AdapterConfig } from "./types/adapter-config.type.js";
+import { PrismaProvider } from "./types/prisma-provider.type.js";
+import { PrismaArgLike } from "./types/prisma-arg-like.type.js";
+import { PrismaRepositoryLike } from "./types/prisma-repository-like.type.js";
+import { PlainObject } from "./types/plain-object.type.js";
+import { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 
 /**
  * `VSRepoAdapter` implementation for Prisma 7. Translates every method of the
@@ -48,10 +54,7 @@ import { Prisma7ClientLike } from "./types/prisma7-client-like.type";
  *
  * @publicApi
  */
-export class VSRepoPrisma7Adapter<
-    T,
-    K extends Prisma7ClientLike = Prisma7ClientLike,
-> extends VSRepoAdapter<T> {
+export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7ClientLike> extends VSRepoAdapter<T> {
     private readonly tableName: string;
     private readonly pkName: string;
     private readonly relations?: AdapterRelations<T>;
@@ -72,11 +75,7 @@ export class VSRepoPrisma7Adapter<
         this.pkName = validated.pkName as string;
         this.relations = validated.relations;
         this.provider = resolveProvider(prisma, validated.provider);
-        this.logger = new VSLogger(
-            validated.logLevel ?? VSLogLevel.WARN,
-            this.constructor.name + "Logger",
-            validated.logSlowThresholdMs ?? 300,
-        );
+        this.logger = new VSLogger(validated.logLevel ?? VSLogLevel.WARN, this.constructor.name + "Logger");
 
         this.logger.logInfo(
             `${this.constructor.name} initialized for table '${this.tableName}' (pkName: '${this.pkName}'${
@@ -90,15 +89,11 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Resolves the "read" part of a Prisma arg: select/include/orderBy/pagination. */
-    private resolveReadArg(
-        options: (AdapterMethodOptions<T> & { distinct?: (keyof T)[] }) | undefined,
-    ): PrismaArgLike {
+    private resolveReadArg(options: (AdapterMethodOptions<T> & { distinct?: (keyof T)[] }) | undefined): PrismaArgLike {
         options ??= {};
 
         const prismaSelect = options.select && parsePrismaSelect(options.select);
-        const prismaInclude = prismaSelect
-            ? undefined
-            : options.relations && parsePrismaInclude(options.relations);
+        const prismaInclude = prismaSelect ? undefined : options.relations && parsePrismaInclude(options.relations);
 
         return {
             select: prismaSelect,
@@ -257,10 +252,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Runs `fn` inside a native transaction of the underlying ORM/database. */
-    public async runInTransaction<R>(
-        fn: (tx: any) => Promise<R>,
-        options?: VSRepoTransactionOptions,
-    ): Promise<R> {
+    async runInTransaction<R>(fn: (tx: any) => Promise<R>, options?: VSRepoTransactionOptions): Promise<R> {
         try {
             return await (this.prisma as any).$transaction(fn, {
                 isolationLevel: options?.isolationLevel,
@@ -272,10 +264,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Fetches a single record matching `where`. */
-    public async findOne(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<T | null> {
+    async findOne(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T | null> {
         const start = this.logger.startPerformLog("run findOne");
 
         try {
@@ -291,10 +280,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Fetches a single record matching `where`, throwing if none is found. */
-    public async findOneOrThrow(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<T> {
+    async findOneOrThrow(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T> {
         const start = this.logger.startPerformLog("run findOneOrThrow");
 
         try {
@@ -310,10 +296,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Fetches all records matching `where`. */
-    public async findMany(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T> & { distinct?: (keyof T)[] },
-    ): Promise<T[]> {
+    async findMany(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T[]> {
         const start = this.logger.startPerformLog("run findMany");
 
         try {
@@ -329,7 +312,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Creates or updates (upsert) a single record. */
-    public async save(obj: DeepPartial<T>, options?: AdapterMethodOptions<T>): Promise<T> {
+    async save(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const start = this.logger.startPerformLog("run save");
 
         try {
@@ -364,13 +347,11 @@ export class VSRepoPrisma7Adapter<
      * reusing `options.db` when it's already a transaction client (see
      * `runTransactional`).
      */
-    public async saveMany(objs: DeepPartial<T>[], options?: AdapterMethodOptions<T>): Promise<T[]> {
+    async saveMany(objs: DeepPartial<T>[], options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
         const start = this.logger.startPerformLog("run saveMany");
 
         try {
-            this.logger.logDebug(
-                `Saving ${objs.length} record(s) individually inside a transaction`,
-            );
+            this.logger.logDebug(`Saving ${objs.length} record(s) individually inside a transaction`);
 
             return await this.runTransactional(options?.db, async tx => {
                 const saved: T[] = [];
@@ -388,7 +369,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Deletes a single record matching `where`. */
-    public async delete(where: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T> {
+    async delete(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const start = this.logger.startPerformLog("run delete");
 
         try {
@@ -404,10 +385,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Deletes every record matching `where`, returning the count of affected rows. */
-    public async deleteMany(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<CountResult> {
+    async deleteMany(where: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<CountResult> {
         const start = this.logger.startPerformLog("run deleteMany");
 
         try {
@@ -437,10 +415,7 @@ export class VSRepoPrisma7Adapter<
      * `repository.transaction()` with a higher isolation level, e.g.
      * `TransactionIsolationLevel.SERIALIZABLE`.
      */
-    public async deleteManyReturning(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<T[]> {
+    async deleteManyReturning(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
         const start = this.logger.startPerformLog("run deleteManyReturning");
 
         try {
@@ -466,19 +441,11 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Updates a single record matching `where`. */
-    public async update(
-        where: VSRepoWhere<T>,
-        obj: DeepPartial<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<T> {
+    async update(where: VSRepoWhere<T>, obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const start = this.logger.startPerformLog("run update");
 
         try {
-            const { update } = parsePrismaWriteData(
-                obj as PlainObject,
-                this.pkName,
-                this.relations,
-            );
+            const { update } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
             const arg = {
                 ...this.resolveReadArg(options),
                 where: parsePrismaWhere<T>(where),
@@ -495,10 +462,10 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Updates every record matching `where`, returning the count of affected rows. */
-    public async updateMany(
+    async updateMany(
         where: VSRepoWhere<T>,
         obj: DeepPartial<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
         const start = this.logger.startPerformLog("run updateMany");
 
@@ -516,10 +483,10 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Updates every record matching `where`, returning the updated records. */
-    public async updateManyReturning(
+    async updateManyReturning(
         where: VSRepoWhere<T>,
         obj: DeepPartial<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T[]> {
         const start = this.logger.startPerformLog("run updateManyReturning");
 
@@ -556,7 +523,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Returns the number of records matching `where`. */
-    public async count(where: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<number> {
+    async count(where?: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<number> {
         const start = this.logger.startPerformLog("run count");
 
         try {
@@ -573,10 +540,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Checks whether at least one record matching `where` exists. */
-    public async exists(
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
-    ): Promise<boolean> {
+    async exists(where?: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<boolean> {
         const start = this.logger.startPerformLog("run exists");
 
         try {
@@ -593,7 +557,7 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Executes a raw query/statement against the underlying database, used by `@QueryMethod`. */
-    public async query<R = any>(query: string, options?: AdapterQueryOptions): Promise<R> {
+    async query<R = any>(query: string, options?: AdapterQueryOptions): Promise<R> {
         const modifying = options?.modifying ?? false;
         const db = options?.db ?? this.prisma;
         const args = options?.args ?? [];
@@ -603,9 +567,7 @@ export class VSRepoPrisma7Adapter<
         try {
             this.logger.logDebug("Running raw query", { query, args, modifying });
 
-            return modifying
-                ? await db.$executeRawUnsafe(query, ...args)
-                : await db.$queryRawUnsafe(query, ...args);
+            return modifying ? await db.$executeRawUnsafe(query, ...args) : await db.$queryRawUnsafe(query, ...args);
         } catch (error) {
             throw mapPrismaError(error, "query");
         } finally {
@@ -614,15 +576,11 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Creates a single record. */
-    public async create(obj: DeepPartial<T>, options?: AdapterMethodOptions<T>): Promise<T> {
+    async create(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const start = this.logger.startPerformLog("run create");
 
         try {
-            const { create } = parsePrismaWriteData(
-                obj as PlainObject,
-                this.pkName,
-                this.relations,
-            );
+            const { create } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
             const arg = { ...this.resolveReadArg(options), data: create };
             this.logger.logDebug("Resolved Prisma arg for 'create'", arg);
 
@@ -639,9 +597,9 @@ export class VSRepoPrisma7Adapter<
      * stripped (see `stripRelationFields`), since Prisma's `createMany` doesn't
      * support nested writes.
      */
-    public async createMany(
+    async createMany(
         objs: DeepPartial<T>[],
-        options?: AdapterMethodOptions<T> & { ignoreConflicts?: boolean },
+        options?: WithIgnoreConflicts<RestrictAdapterMethodOptions<T>>,
     ): Promise<CountResult> {
         const start = this.logger.startPerformLog("run createMany");
 
@@ -661,9 +619,9 @@ export class VSRepoPrisma7Adapter<
     /**
      * Creates multiple records in a single operation, returning the created records.
      */
-    public async createManyReturning(
+    async createManyReturning(
         objs: DeepPartial<T>[],
-        options?: AdapterMethodOptions<T> & { ignoreConflicts?: boolean },
+        options?: WithIgnoreConflicts<SimpleAdapterMethodOptions<T>>,
     ): Promise<T[]> {
         const start = this.logger.startPerformLog("run createManyReturning");
 
@@ -701,10 +659,10 @@ export class VSRepoPrisma7Adapter<
      * VSRepository had (see `mergeEntities`). It's on the caller to decide
      * what to do with the result (e.g. call `save` next).
      */
-    public async merge<K extends DeepPartial<T>>(
+    async merge<K extends DeepPartial<T>>(
         where: VSRepoWhere<T>,
         obj: K,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<(K & T) | null> {
         const start = this.logger.startPerformLog("run merge");
 
@@ -724,26 +682,18 @@ export class VSRepoPrisma7Adapter<
     }
 
     /** Creates a record if none matches `where`, otherwise updates it. */
-    public async upsert(
+    async upsert(
         where: VSRepoWhere<T>,
         create: DeepPartial<T>,
         update: DeepPartial<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         const start = this.logger.startPerformLog("run upsert");
 
         try {
-            const parsedCreate = parsePrismaWriteData(
-                create as PlainObject,
-                this.pkName,
-                this.relations,
-            ).create;
+            const parsedCreate = parsePrismaWriteData(create as PlainObject, this.pkName, this.relations).create;
 
-            const parsedUpdate = parsePrismaWriteData(
-                update as PlainObject,
-                this.pkName,
-                this.relations,
-            ).update;
+            const parsedUpdate = parsePrismaWriteData(update as PlainObject, this.pkName, this.relations).update;
 
             const arg = {
                 ...this.resolveReadArg(options),
@@ -765,31 +715,31 @@ export class VSRepoPrisma7Adapter<
      * Atomically adds `value` to `field` on the record matching `where`,
      * via Prisma's native `{ field: { increment: value } }` write.
      */
-    public async incrementOne<K extends NumericKeys<T>>(
+    async incrementOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
         where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         return this.atomicUpdate("increment", field, value, where, options);
     }
 
     /** Same as {@link VSRepoPrisma7Adapter.incrementOne}, subtracting `value` instead of adding it. */
-    public async decrementOne<K extends NumericKeys<T>>(
+    async decrementOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
         where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         return this.atomicUpdate("decrement", field, value, where, options);
     }
 
     /** Same as {@link VSRepoPrisma7Adapter.incrementOne}, multiplying the field's current value by `value`. */
-    public async multiplyOne<K extends NumericKeys<T>>(
+    async multiplyOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
         where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         return this.atomicUpdate("multiply", field, value, where, options);
     }
@@ -801,52 +751,88 @@ export class VSRepoPrisma7Adapter<
      * `division_by_zero` error for integer columns; `Infinity`/`NaN` are not
      * representable in a numeric/decimal column, so those also error).
      */
-    public async divideOne<K extends NumericKeys<T>>(
+    async divideOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
         where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         return this.atomicUpdate("divide", field, value, where, options);
+    }
+
+    async incrementMany<K extends NumericKeys<T>>(
+        field: K,
+        value: NonNullable<T[K]>,
+        where: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
+    ): Promise<CountResult> {
+        throw new Error("Method not implemented.");
+    }
+
+    async decrementMany<K extends NumericKeys<T>>(
+        field: K,
+        value: NonNullable<T[K]>,
+        where: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
+    ): Promise<CountResult> {
+        throw new Error("Method not implemented.");
+    }
+
+    async multiplyMany<K extends NumericKeys<T>>(
+        field: K,
+        value: NonNullable<T[K]>,
+        where: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
+    ): Promise<CountResult> {
+        throw new Error("Method not implemented.");
+    }
+
+    async divideMany<K extends NumericKeys<T>>(
+        field: K,
+        value: NonNullable<T[K]>,
+        where: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
+    ): Promise<CountResult> {
+        throw new Error("Method not implemented.");
     }
 
     /**
      * Returns the sum of `field` across every record matching `where` (all
      * records if `where` is empty), or `null` if no record matches.
      */
-    public async sum(
+    async sum(
         field: NumericKeys<T>,
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        where?: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        return this.aggregate("sum", field, where, options);
+        return this.aggregate("sum", field, where ?? {}, options);
     }
 
     /** Same as {@link VSRepoPrisma7Adapter.sum}, but the arithmetic mean instead of the total. */
-    public async average(
+    async average(
         field: NumericKeys<T>,
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        where?: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        return this.aggregate("avg", field, where, options);
+        return this.aggregate("avg", field, where ?? {}, options);
     }
 
     /** Same as {@link VSRepoPrisma7Adapter.sum}, but the minimum value instead of the total. */
-    public async min(
+    async min(
         field: NumericKeys<T>,
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        where?: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        return this.aggregate("min", field, where, options);
+        return this.aggregate("min", field, where ?? {}, options);
     }
 
     /** Same as {@link VSRepoPrisma7Adapter.sum}, but the maximum value instead of the total. */
-    public async max(
+    async max(
         field: NumericKeys<T>,
-        where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        where?: VSRepoWhere<T>,
+        options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        return this.aggregate("max", field, where, options);
+        return this.aggregate("max", field, where ?? {}, options);
     }
 
     /**
@@ -863,16 +849,16 @@ export class VSRepoPrisma7Adapter<
      *
      * @publicApi
      */
-    override getPlaceholder(index: number): string {
+    getPlaceholder(index: number): string {
         switch (this.provider) {
             case "postgresql":
             case "cockroachdb":
-                return `$${index + 1}`;
+                return getPostgresPlaceholder(index);
             case "mysql":
             case "sqlite":
-                return "?";
+                return getSqlitePlaceholder(index);
             case "sqlserver":
-                return `@P${index + 1}`;
+                return getSqlServerPlaceholder(index);
             default:
                 throw new VSRepoAdapterError(
                     "Cannot resolve the raw-query placeholder syntax: the Prisma provider couldn't be detected from the client, " +

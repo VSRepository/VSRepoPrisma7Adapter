@@ -23,9 +23,9 @@
  */
 
 import { VSRepoWhere } from "vsrepo";
-import { PlainObject } from "../types/plain-object.type";
-import { isDecimal } from "../validators/is-decimal.validator";
-import { isPlainObject } from "../validators/is-plain-object.validator";
+import { PlainObject } from "../types/plain-object.type.js";
+import { isDecimal } from "../validators/is-decimal.validator.js";
+import { isPlainObject } from "../validators/is-plain-object.validator.js";
 
 /** Chaves reconhecidas como operadores de campo do VSRepoFieldOperators */
 const FIELD_OPERATOR_KEYS = new Set([
@@ -82,10 +82,7 @@ function parseFieldOperators(value: PlainObject): PlainObject {
             }
 
             case "not": {
-                result.not =
-                    isPlainObject(val) && isFieldOperatorObject(val)
-                        ? parseFieldOperators(val)
-                        : val;
+                result.not = isPlainObject(val) && isFieldOperatorObject(val) ? parseFieldOperators(val) : val;
                 break;
             }
 

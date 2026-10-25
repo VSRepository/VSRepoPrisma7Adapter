@@ -1,4 +1,4 @@
-import { Prisma7ClientLike } from "./prisma7-client-like.type";
+import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
 
 /**
  * Extracts the model/delegate names from a Prisma Client instance type,

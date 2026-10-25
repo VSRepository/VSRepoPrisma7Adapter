@@ -1,13 +1,11 @@
 import { AdapterErrorCode, VSLogLevel, VSRepoAdapterError } from "vsrepo";
-import { VSRepoPrisma7AdapterConfig } from "../types/adapter-config.type";
-import { PRISMA_PROVIDERS, PrismaProvidersSet } from "../resolvers/resolve-provider.resolver";
+import { VSRepoPrisma7AdapterConfig } from "../types/adapter-config.type.js";
+import { PRISMA_PROVIDERS, PrismaProvidersSet } from "../resolvers/resolve-provider.resolver.js";
 
 const VALID_MODES = ["otm", "mtm", "mto", "oto"] as const;
 const VALID_RESTRICTIONS = ["set", "add"] as const;
 const VALID_RELATION_KEYS = new Set(["mode", "restriction", "pk", "nullable"]);
-const VALID_LOG_LEVELS = new Set(
-    Object.values(VSLogLevel).filter((v): v is number => typeof v === "number"),
-);
+const VALID_LOG_LEVELS = new Set(Object.values(VSLogLevel).filter((v): v is number => typeof v === "number"));
 
 function fail(path: string, message: string): never {
     throw new VSRepoAdapterError(

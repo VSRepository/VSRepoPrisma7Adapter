@@ -1,8 +1,8 @@
 import type { VSLogLevel } from "vsrepo";
-import { AdapterRelations } from "./adapter-relations.type";
-import { Prisma7ClientLike } from "./prisma7-client-like.type";
-import { PrismaClientModels } from "./prisma-client-models.type";
-import { PrismaProvider } from "./prisma-provider.type";
+import { AdapterRelations } from "./adapter-relations.type.js";
+import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
+import { PrismaClientModels } from "./prisma-client-models.type.js";
+import { PrismaProvider } from "./prisma-provider.type.js";
 
 /**
  * Configuration accepted by `VSRepoPrisma7Adapter`'s constructor, as the
@@ -10,10 +10,7 @@ import { PrismaProvider } from "./prisma-provider.type";
  *
  * @publicApi
  */
-export interface VSRepoPrisma7AdapterConfig<
-    T = any,
-    K extends Prisma7ClientLike = Prisma7ClientLike,
-> {
+export interface VSRepoPrisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Prisma7ClientLike> {
     /** Name of the Prisma Client model/delegate (e.g. `"user"`, as in `prisma.user`). */
     tableName: [PrismaClientModels<K>] extends [never] ? string : PrismaClientModels<K>;
     /** Name of the entity's primary key field (e.g. `"id"`). */

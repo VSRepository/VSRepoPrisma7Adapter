@@ -1,4 +1,4 @@
-import { PrismaProvider } from "../types/prisma-provider.type";
+import { PrismaProvider } from "../types/prisma-provider.type.js";
 
 export const PRISMA_PROVIDERS = ["postgresql", "cockroachdb", "mysql", "sqlite", "sqlserver"];
 
@@ -37,10 +37,7 @@ function isPrismaProvider(value: unknown): value is PrismaProvider {
  * caller decides what to do with that (e.g. `getPlaceholder` throws a
  * `NOT_SUPPORTED` error only when it actually needs to know the provider).
  */
-export function resolveProvider(
-    prisma: unknown,
-    override?: PrismaProvider,
-): PrismaProvider | undefined {
+export function resolveProvider(prisma: unknown, override?: PrismaProvider): PrismaProvider | undefined {
     if (override !== undefined) {
         return override;
     }
@@ -56,13 +53,8 @@ export function resolveProvider(
     }
 
     const adapterProvider = engineConfig?.adapter?.provider;
-    if (
-        typeof adapterProvider === "string" &&
-        adapterProvider in ADAPTER_PROVIDER_TO_PRISMA_PROVIDER
-    ) {
-        return ADAPTER_PROVIDER_TO_PRISMA_PROVIDER[
-            adapterProvider as keyof typeof ADAPTER_PROVIDER_TO_PRISMA_PROVIDER
-        ];
+    if (typeof adapterProvider === "string" && adapterProvider in ADAPTER_PROVIDER_TO_PRISMA_PROVIDER) {
+        return ADAPTER_PROVIDER_TO_PRISMA_PROVIDER[adapterProvider as keyof typeof ADAPTER_PROVIDER_TO_PRISMA_PROVIDER];
     }
 
     return undefined;

@@ -16,16 +16,12 @@
  */
 
 import merge from "deepmerge";
-import { AdapterRelations } from "../types/adapter-relations.type";
-import { PlainObject } from "../types/plain-object.type";
-import { Relation } from "../types/relation.type";
-import { isPlainObject } from "../validators/is-plain-object.validator";
+import { AdapterRelations } from "../types/adapter-relations.type.js";
+import { PlainObject } from "../types/plain-object.type.js";
+import { Relation } from "../types/relation.type.js";
+import { isPlainObject } from "../validators/is-plain-object.validator.js";
 
-function mergeToManyRelation(
-    target: PlainObject[],
-    source: PlainObject[],
-    relationPk: string,
-): PlainObject[] {
+function mergeToManyRelation(target: PlainObject[], source: PlainObject[], relationPk: string): PlainObject[] {
     const targetMap = new Map<any, PlainObject>();
     const targetWithoutPk: PlainObject[] = [];
 

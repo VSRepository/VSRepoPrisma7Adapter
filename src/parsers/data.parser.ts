@@ -30,9 +30,9 @@
  */
 
 import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
-import { AdapterRelations } from "../types/adapter-relations.type";
-import { PlainObject } from "../types/plain-object.type";
-import { Relation } from "../types/relation.type";
+import { AdapterRelations } from "../types/adapter-relations.type.js";
+import { PlainObject } from "../types/plain-object.type.js";
+import { Relation } from "../types/relation.type.js";
 
 export interface PrismaWriteData {
     create: PlainObject;
@@ -45,10 +45,7 @@ function omitKey(item: PlainObject, key: string): PlainObject {
     return clone;
 }
 
-function splitByPk(
-    items: PlainObject[],
-    pk: string,
-): { withPk: PlainObject[]; withoutPk: PlainObject[] } {
+function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; withoutPk: PlainObject[] } {
     const withPk: PlainObject[] = [];
     const withoutPk: PlainObject[] = [];
 
@@ -86,10 +83,7 @@ function parseToOneRelation(
     if (pkValue == undefined) {
         return {
             create: { create: field },
-            update:
-                relation.restriction === "add"
-                    ? { create: field }
-                    : { upsert: { create: field, update: field } },
+            update: relation.restriction === "add" ? { create: field } : { upsert: { create: field, update: field } },
         };
     }
 
@@ -135,10 +129,7 @@ function parseToManyRelation(
     if (relation.restriction === "add") {
         return {
             create,
-            update:
-                relation.mode === "mtm"
-                    ? { create: withoutPk, connectOrCreate }
-                    : { create: withoutPk, upsert },
+            update: relation.mode === "mtm" ? { create: withoutPk, connectOrCreate } : { create: withoutPk, upsert },
         };
     }
 

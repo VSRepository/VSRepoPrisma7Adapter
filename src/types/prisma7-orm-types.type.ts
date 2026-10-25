@@ -1,4 +1,4 @@
-import { Prisma7ClientLike } from "./prisma7-client-like.type";
+import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
 
 /**
  * Helper used to type a `VSRepository`'s `OrmTypes` generic when using
@@ -19,7 +19,5 @@ export type Prisma7OrmTypes<
     TX extends Omit<Prisma7ClientLike, "$on"> | undefined = undefined,
 > = {
     dbClient: DB;
-    dbTransaction: TX extends undefined
-        ? Parameters<Parameters<NonNullable<DB["$transaction"]>>[0]>[0]
-        : TX;
+    dbTransaction: TX extends undefined ? Parameters<Parameters<NonNullable<DB["$transaction"]>>[0]>[0] : TX;
 };

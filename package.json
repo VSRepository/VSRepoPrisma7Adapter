@@ -1,6 +1,6 @@
 {
   "name": "@vsrepo/prisma7-adapter",
-  "version": "1.3.2",
+  "version": "2.0.0-dev",
   "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
   "homepage": "https://github.com/jaobrabo123/VSRepoPrisma7Adapter#readme",
   "repository": {
@@ -16,23 +16,35 @@
       "require": "./dist/index.js"
     }
   },
-  "type": "commonjs",
+  "type": "module",
   "files": [
     "dist",
     "README.md",
-    "README.pt-BR.md"
+    "README.pt-BR.md",
+    "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
+    "build": "bun run clean && tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
-    "test:types": "tsc --noEmit -p tests/tsconfig.json"
+    "lint": "oxlint --type-aware src/ test/",
+    "lint:fix": "oxlint --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:docs": "prettier --write \"docs/**/*.md\" \"./*.md\"",
+    "format:docs:check": "prettier --check \"docs/**/*.md\" \"./*.md\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "full-validation": "bun run typecheck && bun run lint && bun run format:check && bun run test",
+    "prisma:generate": "bun run prisma:generate:postgres",
+    "prisma:generate:postgres": "bunx prisma generate --config prisma/postgres/prisma.config.ts",
+    "prisma:migrate": "bun run prisma:migrate:postgres",
+    "prisma:migrate:postgres": "bunx prisma migrate dev --config prisma/postgres/prisma.config.ts"
   },
   "keywords": [
     "prisma",
@@ -57,35 +69,24 @@
   "license": "MIT",
   "peerDependencies": {
     "@prisma/client": "^7.10.0",
-    "vsrepo": "^2.7.2"
+    "vsrepo": "^3.0.0-dev.1"
   },
   "dependencies": {
     "deepmerge": "^4.3.1"
   },
   "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/plugin-proposal-decorators": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
-    "@babel/preset-typescript": "^7.29.7",
-    "@jest/globals": "^30.5.0",
     "@prisma/adapter-pg": "^7.10.0",
-    "@types/jest": "^30.0.0",
     "@types/node": "^26.4.0",
     "@types/pg": "^8.23.1",
-    "babel-jest": "^30.5.0",
-    "cross-env": "^10.1.0",
+    "@vitest/coverage-v8": "^5.0.5",
     "dotenv": "^17.4.2",
-    "jest": "^30.5.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
     "pg": "^8.23.0",
+    "prettier": "^3.9.10",
     "prisma": "^7.10.0",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
-  },
-  "allowScripts": {
-    "prisma@7.10.0": true,
-    "@parcel/watcher@2.6.0": true,
-    "unrs-resolver@1.12.2": true,
-    "@prisma/engines@7.10.0": true,
-    "esbuild@0.28.2": true
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }

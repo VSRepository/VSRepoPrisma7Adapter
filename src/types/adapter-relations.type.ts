@@ -1,5 +1,5 @@
 import type { RelationKeys } from "vsrepo";
-import { Relation } from "./relation.type";
+import { Relation } from "./relation.type.js";
 
 /**
  * Relation configuration for entity `T`, used by the `create`/`update`/`merge`
