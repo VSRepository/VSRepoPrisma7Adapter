@@ -1,34 +1,3 @@
-/**
- * Parser que converte um `DeepPartial<T>` (formato "cru" vindo do vsrepo) nos
- * payloads `create`/`update` esperados pelo Prisma para escritas com relations,
- * replicando o comportamento da v1 (`resolveCreateUpdatePayloadsWithRelations`).
- *
- * Sem `relations` configurado no adapter, cada campo é repassado como está —
- * exceto `pkName`, que é omitido do `update` (não faz sentido reatribuir a PK
- * num update parcial).
- *
- * Com `relations`, cada campo de relação é resolvido de acordo com seu `mode`/
- * `restriction` (ver `Relation`):
- *  - to-one (`oto`/`mto`) sem PK no valor enviado -> `create` (e `upsert` no
- *    update, a não ser que `restriction: "add"`, que usa só `create`)
- *  - to-one com PK no valor enviado               -> `connectOrCreate` (e
- *    `upsert` no update, a não ser que `restriction: "add"`)
- *  - to-one enviado como `null` com `nullable`     -> `delete` (`oto` +
- *    `restriction: "set"`) ou `disconnect` (`oto` com `restriction: "add"` /
- *    `mto`; um `oto` não "desconecta" no `update`, a linha possuída é apagada)
- *  - to-one enviado como `null` sem `nullable`     -> lança `VSRepoAdapterError`
- *    (code `INVALID_DATA`)
- *  - to-many (`otm`/`mtm`) — itens são separados entre "com PK" e "sem PK":
- *    os sem PK viram `create`, os com PK viram `connectOrCreate` no create e
- *    `upsert` no update; com `restriction: "set"`, itens de `otm` que não
- *    vieram no array são removidos (`deleteMany`) e itens de `mtm` têm o
- *    vínculo resetado (`set: []`) antes de reconectar
- *
- * Essa mesma saída `{ create, update }` é reaproveitada em todos os métodos de
- * escrita do adapter: `create()` usa só `.create`, `update()`/`updateMany()`
- * usam só `.update`, e `save()`/`upsert()` usam os dois.
- */
-
 import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
 import { AdapterRelations } from "../types/adapter-relations.type.js";
 import { PlainObject } from "../types/plain-object.type.js";
