@@ -12,7 +12,7 @@ import { PrismaProvider } from "./prisma-provider.type.js";
  */
 export interface VSRepoPrisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Prisma7ClientLike> {
     /** Name of the Prisma Client model/delegate (e.g. `"user"`, as in `prisma.user`). */
-    tableName: [PrismaClientModels<K>] extends [never] ? string : PrismaClientModels<K>;
+    modelName: [PrismaClientModels<K>] extends [never] ? string : PrismaClientModels<K>;
     /** Name of the entity's primary key field (e.g. `"id"`). */
     pkName: keyof T;
     /**
@@ -31,9 +31,4 @@ export interface VSRepoPrisma7AdapterConfig<T = any, K extends Prisma7ClientLike
     provider?: PrismaProvider;
     /** Minimum log level for the adapter's internal `VSLogger`. @default VSLogLevel.WARN */
     logLevel?: VSLogLevel;
-    /**
-     * Duration (in ms) above which a finished operation is logged as `WARN`, flagging a potentially slow query, instead of the usual
-     * `DEBUG` line. Pass `false` to disable slow-operation warnings entirely (every operation is then only ever logged at `DEBUG`); `true` (or omitting the field) uses the default of 300ms.
-     */
-    logSlowThresholdMs?: number | boolean;
 }

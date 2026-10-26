@@ -1,7 +1,6 @@
 import { AdapterErrorCode, VSRepoAdapterError, VSRepoWhere } from "vsrepo";
 import { PlainObject } from "../types/plain-object.type.js";
 import { isPlainObject } from "../validators/is-plain-object.validator.js";
-import { Prisma } from "../../prisma/postgres/generated/prisma/client.js";
 
 const LOGICAL_KEYS = new Set(["AND", "OR", "NOT"]);
 
@@ -88,18 +87,3 @@ export function parsePrismaWhere<T>(where: VSRepoWhere<T> | undefined): PlainObj
 
     return result;
 }
-
-type User = { id: string; age: number; balance: Prisma.Decimal; name: string; address: { city: string } };
-console.log(
-    JSON.stringify(
-        parsePrismaWhere<User>({
-            AND: { AND: [{ id: "uuid" }] },
-            address: { _with: { city: { equals: "some sity", ignoreCase: true } } },
-            age: { between: [10, 20], not: { in: [10, 2] } },
-            balance: { gt: new Prisma.Decimal(10) },
-            name: { startsWith: "joao", ignoreCase: true },
-        }),
-        null,
-        4,
-    ),
-);

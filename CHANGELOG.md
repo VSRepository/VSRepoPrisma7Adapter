@@ -294,7 +294,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-08-31
 
-> First official release. `@vsrepo/prisma7-adapter` is the officially published `VSRepoAdapter` implementation for [VSRepository v2](https://github.com/jaobrabo123/VSRepository), backed by [Prisma 7](https://www.prisma.io/).
+> First official release. `@vsrepo/prisma7-adapter` is the officially published `VSRepoAdapter` implementation for [VSRepository v2](https://github.com/VSRepository/VSRepository), backed by [Prisma 7](https://www.prisma.io/).
 
 ### Added
 - **Full `VSRepoAdapter` implementation** — translates every `VSRepository` operation into Prisma Client calls, backed by Prisma 7
@@ -319,7 +319,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-08-31 (Português)
 
-> Primeira release oficial. `@vsrepo/prisma7-adapter` é a implementação oficial publicada de `VSRepoAdapter` para o [VSRepository v2](https://github.com/jaobrabo123/VSRepository), usando [Prisma 7](https://www.prisma.io/).
+> Primeira release oficial. `@vsrepo/prisma7-adapter` é a implementação oficial publicada de `VSRepoAdapter` para o [VSRepository v2](https://github.com/VSRepository/VSRepository), usando [Prisma 7](https://www.prisma.io/).
 
 ### Adicionado
 - **Implementação completa de `VSRepoAdapter`** — traduz toda operação do `VSRepository` em chamadas do Prisma Client, usando Prisma 7

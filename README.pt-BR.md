@@ -13,9 +13,9 @@
 
 🇺🇸 [Read in English](./README.md)
 
-> ✅ **Lançado.** Este adapter já foi publicado no npm como `@vsrepo/prisma7-adapter`, feito para o [VSRepository](https://github.com/jaobrabo123/VSRepository). Por enquanto é o único adapter oficial publicado para a v2 — adapters para outros ORMs estão planejados, mas ainda não foram publicados (veja [Status dos adapters](https://github.com/jaobrabo123/VSRepository/blob/main/README.pt-BR.md#status-dos-adapters) no README do VSRepository).
+> ✅ **Lançado.** Este adapter já foi publicado no npm como `@vsrepo/prisma7-adapter`, feito para o [VSRepository](https://github.com/VSRepository/VSRepository). Por enquanto é o único adapter oficial publicado para a v2 — adapters para outros ORMs estão planejados, mas ainda não foram publicados (veja [Status dos adapters](https://github.com/VSRepository/VSRepository/blob/main/README.pt-BR.md#status-dos-adapters) no README do VSRepository).
 
-Implementação de `VSRepoAdapter` para o [VSRepository v2](https://github.com/jaobrabo123/VSRepository) usando [Prisma 7](https://www.prisma.io/). Traduz toda operação do `VSRepository` em chamadas do Prisma Client, resolvendo `VSRepoWhere`, `Ordering`, `select`/`relations` através de parsers dedicados e — quando uma config de `relations` é fornecida — resolvendo campos de relação em `create`/`update`/`upsert`/`merge` da mesma forma que a v1 do VSRepository fazia.
+Implementação de `VSRepoAdapter` para o [VSRepository v2](https://github.com/VSRepository/VSRepository) usando [Prisma 7](https://www.prisma.io/). Traduz toda operação do `VSRepository` em chamadas do Prisma Client, resolvendo `VSRepoWhere`, `Ordering`, `select`/`relations` através de parsers dedicados e — quando uma config de `relations` é fornecida — resolvendo campos de relação em `create`/`update`/`upsert`/`merge` da mesma forma que a v1 do VSRepository fazia.
 
 ---
 

@@ -1,5 +1,5 @@
 /**
- * The Prisma schema datasource providers supported by this adapter.
+ * Datasource providers supported by Prisma.
  *
  * @publicApi
  */

@@ -2,10 +2,10 @@
   "name": "@vsrepo/prisma7-adapter",
   "version": "2.0.0-dev",
   "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
-  "homepage": "https://github.com/jaobrabo123/VSRepoPrisma7Adapter#readme",
+  "homepage": "https://github.com/VSRepository/VSRepoPrisma7Adapter#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaobrabo123/VSRepoPrisma7Adapter.git"
+    "url": "git+https://github.com/VSRepository/VSRepoPrisma7Adapter.git"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -64,7 +64,7 @@
   },
   "bugs": {
     "email": "joaodev.azevedo@outlook.com",
-    "url": "https://github.com/jaobrabo123/VSRepoPrisma7Adapter/issues"
+    "url": "https://github.com/VSRepository/VSRepoPrisma7Adapter/issues"
   },
   "license": "MIT",
   "peerDependencies": {

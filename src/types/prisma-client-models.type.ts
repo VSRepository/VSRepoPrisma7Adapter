@@ -6,7 +6,7 @@ import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
  *
  * The resulting union contains only the keys that represent actual Prisma model
  * delegates (e.g. `"user"`, `"post"`, `"comment"`), enabling type-safe
- * auto-complete when configuring `tableName` in `VSRepoPrisma7AdapterConfig`.
+ * auto-complete when configuring `modelName` in `VSRepoPrisma7AdapterConfig`.
  *
  * @template T - A Prisma Client type that extends `Prisma7ClientLike`.
  *
@@ -32,4 +32,5 @@ export type PrismaClientModels<T extends Prisma7ClientLike> = Exclude<
     | "$queryRawUnsafe"
     | "$transaction"
     | symbol
+    | number
 >;

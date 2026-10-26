@@ -1,13 +1,3 @@
-/**
- * Parser que converte um `Ordering<T>` (formato "amigável" do vsrepo) num
- * `orderBy` válido de qualquer modelo do Prisma.
- *
- * Suporta:
- *  - Direção em qualquer caixa:  { name: "ASC" } / { name: "asc" } -> { name: "asc" }
- *  - Ordenação encadeada:        [{ name: "asc" }, { createdAt: "desc" }]
- *  - Ordenação aninhada em relations to-one: { address: { city: "asc" } }
- */
-
 import { Ordering, SortDirection } from "vsrepo";
 import { PlainObject } from "../types/plain-object.type.js";
 import { isPlainObject } from "../validators/is-plain-object.validator.js";

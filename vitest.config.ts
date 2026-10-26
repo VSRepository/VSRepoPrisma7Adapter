@@ -4,7 +4,7 @@ export default defineConfig({
     test: {
         globals: true,
         root: "./",
-        include: ["**/*.spec.ts"],
+        include: ["./src/**/*.spec.ts"],
         maxConcurrency: 5, // default: 5
     },
 });
