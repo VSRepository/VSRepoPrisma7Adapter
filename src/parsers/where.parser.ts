@@ -57,8 +57,12 @@ function parseFieldValue(value: unknown): unknown {
             }
 
             case "like": {
-                // TODO: melhorar esse erro
-                throw new VSRepoAdapterError("", AdapterErrorCode.NOT_SUPPORTED, null);
+                throw new VSRepoAdapterError(
+                    `The 'like' operator is not supported by the Prisma adapter, since Prisma has no equivalent. ` +
+                        `Use 'contains', 'startsWith' or 'endsWith' instead.`,
+                    AdapterErrorCode.NOT_SUPPORTED,
+                    null,
+                );
             }
 
             default:
