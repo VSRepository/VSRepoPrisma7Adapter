@@ -32,27 +32,27 @@ function parseFieldValue(value: unknown): unknown {
             }
 
             case "_some": {
-                result.some = parseFieldValue(value._some);
+                result.some = parsePrismaWhere(value._some as VSRepoWhere<unknown>);
                 break;
             }
 
             case "_every": {
-                result.every = parseFieldValue(value._every);
+                result.every = parsePrismaWhere(value._every as VSRepoWhere<unknown>);
                 break;
             }
 
             case "_none": {
-                result.none = parseFieldValue(value._none);
+                result.none = parsePrismaWhere(value._none as VSRepoWhere<unknown>);
                 break;
             }
 
             case "_with": {
-                result.is = parseFieldValue(value._with);
+                result.is = parsePrismaWhere(value._with as VSRepoWhere<unknown>);
                 break;
             }
 
             case "_without": {
-                result.isNot = parseFieldValue(value._without);
+                result.isNot = parsePrismaWhere(value._without as VSRepoWhere<unknown>);
                 break;
             }
 
