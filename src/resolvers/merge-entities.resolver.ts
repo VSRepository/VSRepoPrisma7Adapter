@@ -1,8 +1,22 @@
-import merge from "deepmerge";
 import { AdapterRelations } from "../types/adapter-relations.type.js";
 import { PlainObject } from "../types/plain-object.type.js";
 import { Relation } from "../types/relation.type.js";
 import { isPlainObject } from "../validators/is-plain-object.validator.js";
+
+/**
+ * Shallow-merges `source` into a copy of `target`, skipping `undefined` values
+ * so they never erase an existing field. Values (objects, arrays, `Date`,
+ * `Decimal`...) are assigned by reference, never cloned nor merged.
+ */
+function assignDefined(target: PlainObject, source: PlainObject): PlainObject {
+    const merged: PlainObject = { ...target };
+
+    for (const [key, value] of Object.entries(source)) {
+        if (value !== undefined) merged[key] = value;
+    }
+
+    return merged;
+}
 
 function mergeToManyRelation(target: PlainObject[], source: PlainObject[], relationPk: string): PlainObject[] {
     const targetMap = new Map<any, PlainObject>();
@@ -25,34 +39,35 @@ function mergeToManyRelation(target: PlainObject[], source: PlainObject[], relat
         }
 
         const targetItem = targetMap.get(item[relationPk]);
-        targetMap.set(item[relationPk], targetItem ? merge(targetItem, item) : item);
+        targetMap.set(item[relationPk], targetItem ? assignDefined(targetItem, item) : item);
     }
 
     return [...targetMap.values(), ...targetWithoutPk, ...sourceWithoutPk];
 }
 
+/**
+ * Merges `obj` into `result` WITHOUT mutating either of them.
+ *
+ * - Fields of `obj` that are `undefined` are ignored (they never erase a value).
+ * - Only the fields configured in `relations` are merged: a to-one relation
+ *   has its fields merged with the existing related object (`null` clears it),
+ *   and a to-many relation is merged item by item, matching them by the
+ *   relation's `pk`.
+ * - Every other value — including objects and arrays that are not configured
+ *   as relations, and the nested values of a merged related object — is
+ *   replaced as a whole, never deep merged nor concatenated.
+ */
 export function mergeEntities<T extends PlainObject, U extends PlainObject>(
     result: T,
     obj: U,
     relations?: AdapterRelations<T>,
 ): U & T {
-    if (!relations) {
-        const definedObj: Partial<U> = {};
-        for (const key of Object.keys(obj) as (keyof U)[]) {
-            if (obj[key] !== undefined) definedObj[key] = obj[key];
-        }
-
-        return merge(result, definedObj, {
-            arrayMerge: (target, source) => target.concat(source),
-        }) as unknown as U & T;
-    }
-
     const merged: PlainObject = { ...result };
 
     for (const [key, field] of Object.entries(obj)) {
         if (field === undefined) continue;
 
-        const relation = (relations as PlainObject)[key] as Relation<{}> | undefined;
+        const relation = (relations as PlainObject | undefined)?.[key] as Relation<{}> | undefined;
 
         if (!relation) {
             merged[key] = field;
@@ -60,7 +75,7 @@ export function mergeEntities<T extends PlainObject, U extends PlainObject>(
         }
 
         if ((relation.mode === "oto" || relation.mode === "mto") && isPlainObject(merged[key])) {
-            merged[key] = field === null ? null : merge(merged[key], field as PlainObject);
+            merged[key] = field === null ? null : assignDefined(merged[key], field as PlainObject);
             continue;
         }
 
