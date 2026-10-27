@@ -1,14 +1,40 @@
 {
   "name": "@vsrepo/prisma7-adapter",
   "version": "2.0.0-dev",
-  "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
-  "homepage": "https://github.com/VSRepository/VSRepoPrisma7Adapter#readme",
+  "author": {
+    "email": "joaodev.azevedo@outlook.com",
+    "url": "https://github.com/jaobrabo123",
+    "name": "João Pedro Azevedo Freire Mecenas"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/VSRepository/VSRepoPrisma7Adapter.git"
   },
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "devDependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.1",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/adapter-mssql": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.5",
+    "dotenv": "^17.4.2",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "pg": "^8.23.0",
+    "prettier": "^3.9.10",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "peerDependencies": {
+    "@prisma/client": "^7.10.0",
+    "vsrepo": "^3.0.0-dev.1"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,16 +42,33 @@
       "require": "./dist/index.js"
     }
   },
-  "type": "module",
+  "bugs": {
+    "email": "joaodev.azevedo@outlook.com",
+    "url": "https://github.com/VSRepository/VSRepoPrisma7Adapter/issues"
+  },
+  "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist",
     "README.md",
     "README.pt-BR.md",
     "CHANGELOG.md"
   ],
-  "engines": {
-    "node": ">=22"
-  },
+  "homepage": "https://github.com/VSRepository/VSRepoPrisma7Adapter#readme",
+  "keywords": [
+    "prisma",
+    "prisma7",
+    "repository",
+    "orm",
+    "typescript",
+    "repository-pattern",
+    "vsrepo",
+    "vsrepository",
+    "adapter"
+  ],
+  "license": "MIT",
   "scripts": {
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
     "build": "bun run clean && tsc -p tsconfig.build.json",
@@ -41,52 +84,17 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "full-validation": "bun run typecheck && bun run lint && bun run format:check && bun run test",
-    "prisma:generate": "bun run prisma:generate:postgres",
+    "prisma:generate": "bun run prisma:generate:postgres && bun run prisma:generate:sqlserver && bun run prisma:generate:sqlite && bun run prisma:generate:mysql",
     "prisma:generate:postgres": "bunx prisma generate --config prisma/postgres/prisma.config.ts",
-    "prisma:migrate": "bun run prisma:migrate:postgres",
-    "prisma:migrate:postgres": "bunx prisma migrate dev --config prisma/postgres/prisma.config.ts"
+    "prisma:generate:sqlserver": "bunx prisma generate --config prisma/sqlserver/prisma.config.ts",
+    "prisma:generate:mysql": "bunx prisma generate --config prisma/mysql/prisma.config.ts",
+    "prisma:generate:sqlite": "bunx prisma generate --config prisma/sqlite/prisma.config.ts",
+    "prisma:migrate": "bun run prisma:migrate:postgres && bun run prisma:migrate:sqlserver && bun run prisma:migrate:sqlite && bun run prisma:migrate:mysql",
+    "prisma:migrate:postgres": "bunx prisma migrate dev --config prisma/postgres/prisma.config.ts",
+    "prisma:migrate:sqlserver": "bunx prisma migrate dev --config prisma/sqlserver/prisma.config.ts",
+    "prisma:migrate:mysql": "bunx prisma migrate dev --config prisma/mysql/prisma.config.ts",
+    "prisma:migrate:sqlite": "bunx prisma migrate dev --config prisma/sqlite/prisma.config.ts"
   },
-  "keywords": [
-    "prisma",
-    "prisma7",
-    "repository",
-    "orm",
-    "typescript",
-    "repository-pattern",
-    "vsrepo",
-    "vsrepository",
-    "adapter"
-  ],
-  "author": {
-    "email": "joaodev.azevedo@outlook.com",
-    "url": "https://github.com/jaobrabo123",
-    "name": "João Pedro Azevedo Freire Mecenas"
-  },
-  "bugs": {
-    "email": "joaodev.azevedo@outlook.com",
-    "url": "https://github.com/VSRepository/VSRepoPrisma7Adapter/issues"
-  },
-  "license": "MIT",
-  "peerDependencies": {
-    "@prisma/client": "^7.10.0",
-    "vsrepo": "^3.0.0-dev.1"
-  },
-  "dependencies": {
-    "deepmerge": "^4.3.1"
-  },
-  "devDependencies": {
-    "@prisma/adapter-pg": "^7.10.0",
-    "@types/node": "^26.4.0",
-    "@types/pg": "^8.23.1",
-    "@vitest/coverage-v8": "^5.0.5",
-    "dotenv": "^17.4.2",
-    "oxlint": "^1.89.0",
-    "oxlint-tsgolint": "^7.0.2005",
-    "pg": "^8.23.0",
-    "prettier": "^3.9.10",
-    "prisma": "^7.10.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2",
-    "vitest": "^5.0.5"
-  }
+  "type": "module",
+  "types": "./dist/index.d.ts"
 }

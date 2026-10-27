@@ -3,7 +3,7 @@ node_modules/
 dist/
 .env
 *.log
-/generated/prisma
+**/generated/prisma
 
 .gemini/
 .cursor/
@@ -23,3 +23,5 @@ linkedin/
 skills-lock.json
 vsrepo-*.tgz
 # .github/workflows/ci.yml
+
+dev.db
