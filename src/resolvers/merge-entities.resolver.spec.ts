@@ -293,12 +293,20 @@ describe("mergeEntities", () => {
 
             it("should keep items from result that were not sent", () => {
                 const result = merge(
-                    { posts: [{ id: "1", title: "A" }, { id: "2", title: "B" }] },
+                    {
+                        posts: [
+                            { id: "1", title: "A" },
+                            { id: "2", title: "B" },
+                        ],
+                    },
                     { posts: [{ id: "1", title: "A2" }] },
                     config,
                 );
 
-                expect(result.posts).toEqual([{ id: "1", title: "A2" }, { id: "2", title: "B" }]);
+                expect(result.posts).toEqual([
+                    { id: "1", title: "A2" },
+                    { id: "2", title: "B" },
+                ]);
             });
 
             it("should append items with a new pk", () => {
@@ -308,7 +316,10 @@ describe("mergeEntities", () => {
                     config,
                 );
 
-                expect(result.posts).toEqual([{ id: "1", title: "A" }, { id: "2", title: "B" }]);
+                expect(result.posts).toEqual([
+                    { id: "1", title: "A" },
+                    { id: "2", title: "B" },
+                ]);
             });
 
             it("should keep items without pk from both sides, after the items with pk", () => {
@@ -328,17 +339,22 @@ describe("mergeEntities", () => {
             });
 
             it("should merge repeated pks sent in obj into a single item", () => {
-                const result = merge({ posts: [] }, { posts: [{ id: "1", a: 1 }, { id: "1", b: 2 }] }, config);
+                const result = merge(
+                    { posts: [] },
+                    {
+                        posts: [
+                            { id: "1", a: 1 },
+                            { id: "1", b: 2 },
+                        ],
+                    },
+                    config,
+                );
 
                 expect(result.posts).toEqual([{ id: "1", a: 1, b: 2 }]);
             });
 
             it("should treat a null pk as present (only undefined means absent)", () => {
-                const result = merge(
-                    { posts: [{ id: null, a: 1 }] },
-                    { posts: [{ id: null, b: 2 }] },
-                    config,
-                );
+                const result = merge({ posts: [{ id: null, a: 1 }] }, { posts: [{ id: null, b: 2 }] }, config);
 
                 expect(result.posts).toEqual([{ id: null, a: 1, b: 2 }]);
             });
@@ -388,7 +404,12 @@ describe("mergeEntities", () => {
 
                 const result = merge(
                     { tags: [{ code: "x", name: "X" }] },
-                    { tags: [{ code: "x", name: "X2" }, { code: "y", name: "Y" }] },
+                    {
+                        tags: [
+                            { code: "x", name: "X2" },
+                            { code: "y", name: "Y" },
+                        ],
+                    },
                     custom,
                 );
 
@@ -431,7 +452,10 @@ describe("mergeEntities", () => {
                 id: "1",
                 name: "Jane",
                 address: { id: "10", street: "Rua B" },
-                posts: [{ id: "1", title: "A" }, { id: "2", title: "B" }],
+                posts: [
+                    { id: "1", title: "A" },
+                    { id: "2", title: "B" },
+                ],
                 tags: [{ code: "x", name: "X2" }],
             });
         });

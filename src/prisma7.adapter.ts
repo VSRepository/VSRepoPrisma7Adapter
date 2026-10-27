@@ -3,7 +3,6 @@ import {
     AdapterMethodOptions,
     AdapterQueryOptions,
     CountResult,
-    DecimalLike,
     DeepPartial,
     getPostgresPlaceholder,
     getSqlitePlaceholder,
