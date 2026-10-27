@@ -728,6 +728,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdate("divide", field, value, where, options);
     }
 
+    /**
+     * Atomically adds `value` to `field` on every record matching `where`,
+     * via Prisma's native `{ field: { increment: value } }` write.
+     */
     async incrementMany<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
@@ -737,6 +741,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdateMany("increment", field, value, where, options);
     }
 
+    /**
+     * Atomically subtracts `value` from `field` on every record matching `where`,
+     * via Prisma's native `{ field: { decrement: value } }` write.
+     */
     async decrementMany<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
@@ -746,6 +754,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdateMany("decrement", field, value, where, options);
     }
 
+    /**
+     * Atomically multiplies `field` by `value` on every record matching `where`,
+     * via Prisma's native `{ field: { multiply: value } }` write.
+     */
     async multiplyMany<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
@@ -755,6 +767,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdateMany("multiply", field, value, where, options);
     }
 
+    /**
+     * Atomically divides `field` by `value` on every record matching `where`,
+     * via Prisma's native `{ field: { divide: value } }` write.
+     */
     async divideMany<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
