@@ -1,20 +1,7 @@
 import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
 
-/**
- * Valida o client Prisma passado como primeiro argumento do construtor do
- * `VSRepoPrisma7Adapter`. Roda depois da config já ter sido validada (usa o
- * `modelName` validado), e falha cedo — com um `VSRepoAdapterError` claro —
- * em vez de deixar o adapter quebrar mais tarde, na primeira query, com um
- * erro genérico de runtime (`Cannot read properties of undefined`, etc.):
- *
- * - `prisma` não pode ser `null`/`undefined` (code `MISSING_DB_CLIENT`);
- * - `prisma[modelName]` precisa existir como delegate (ex. `prisma.user`
- *   para `modelName: "user"`) (code `MODEL_NOT_FOUND`), pegando erros de
- *   digitação em `modelName` — ou um `modelName` que não corresponde a
- *   nenhum model do schema Prisma — no construtor, não numa query.
- */
 export function validatePrismaClient(prisma: unknown, modelName: string): void {
-    if (prisma === null || prisma === undefined) {
+    if (prisma == null) {
         throw new VSRepoAdapterError(
             "Missing Prisma client: the first constructor argument (prisma) is null/undefined.",
             AdapterErrorCode.MISSING_DB_CLIENT,

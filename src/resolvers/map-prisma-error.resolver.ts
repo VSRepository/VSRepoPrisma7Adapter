@@ -6,7 +6,7 @@ import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
  * realistically expected to react to are listed here — anything else falls
  * back to `AdapterErrorCode.UNKNOWN` in `mapPrismaError`.
  *
- * @see https://www.prisma.io/docs/orm/reference/error-reference
+ * @see https://www.prisma.io/docs/orm/v7/reference/error-reference
  */
 const KNOWN_REQUEST_ERROR_CODE_MAP: Record<string, AdapterErrorCode> = {
     // Connection / engine errors (P1xxx)
