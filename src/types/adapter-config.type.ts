@@ -10,7 +10,7 @@ import { PrismaProvider } from "./prisma-provider.type.js";
  *
  * @publicApi
  */
-export interface VSRepoPrisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Prisma7ClientLike> {
+export interface Prisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Prisma7ClientLike> {
     /** Name of the Prisma Client model/delegate (e.g. `"user"`, as in `prisma.user`). */
     modelName: [PrismaClientModels<K>] extends [never] ? string : PrismaClientModels<K>;
     /** Name of the entity's primary key field (e.g. `"id"`). */

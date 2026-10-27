@@ -7,7 +7,7 @@ import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
  *
  * @example
  * ```typescript
- * type MyOrmTypes = Prisma7OrmTypes<PrismaClient, Prisma.TransactionClient>;
+ * type MyOrmTypes = Prisma7OrmTypes<PrismaClient>;
  *
  * class UserRepository extends VSRepository<User, string, MyOrmTypes> { ... }
  * ```

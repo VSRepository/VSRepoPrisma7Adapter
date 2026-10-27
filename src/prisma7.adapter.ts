@@ -29,25 +29,16 @@ import { mapPrismaError } from "./resolvers/map-prisma-error.resolver.js";
 import { resolveProvider } from "./resolvers/resolve-provider.resolver.js";
 import { validatePrismaClient } from "./validators/validate-prisma-client.validator.js";
 import { AdapterRelations } from "./types/adapter-relations.type.js";
-import { VSRepoPrisma7AdapterConfig } from "./types/adapter-config.type.js";
+import { Prisma7AdapterConfig } from "./types/adapter-config.type.js";
 import { PrismaProvider } from "./types/prisma-provider.type.js";
 import { PrismaArgLike } from "./types/prisma-arg-like.type.js";
 import { PrismaRepositoryLike } from "./types/prisma-repository-like.type.js";
 import { PlainObject } from "./types/plain-object.type.js";
 import { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
+import { isDecimal } from "./validators/is-decimal.validator.js";
 
 /**
- * `VSRepoAdapter` implementation for Prisma 7. Translates every method of the
- * adapter contract into Prisma Client calls, resolving `VSRepoWhere`/`Ordering`/
- * `select`/`include` through the parsers, and — when a
- * `relations` config is provided — resolving relation fields on `create`/
- * `update`/`upsert`/`merge` the same way the v1 of VSRepository did (see
- * `Relation`).
- *
- * Every method always rejects with a `VSRepoAdapterError` — any error raised
- * by Prisma (or by the adapter itself) is translated through `mapPrismaError`
- * before leaving the adapter, so callers never have to deal with a raw
- * Prisma/driver error shape.
+ * `VSRepoAdapter` implementation for Prisma 7.
  *
  * @template T Entity type this adapter operates on.
  *
@@ -62,7 +53,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     constructor(
         private readonly prisma: K,
-        config: VSRepoPrisma7AdapterConfig<T, K>,
+        config: Prisma7AdapterConfig<T, K>,
     ) {
         super();
 
@@ -162,7 +153,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      * evaluated server-side against the row's current value, never as a
      * client-side read-modify-write. `value` is passed through as-is:
      * Prisma accepts a `number`, `bigint`, or any `Decimal`/`DecimalJsLike`
-     * value (which covers a {@link DecimalLike} like `Prisma.Decimal`)
+     * value (which covers a `DecimalLike` like `Prisma.Decimal`)
      * depending on the target column's type.
      *
      * Prisma's `update()` already returns the row reflecting the state
@@ -236,8 +227,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private toNullableNumber(value: unknown): number | null {
         if (value === null || value === undefined) return null;
         if (typeof value === "bigint") return Number(value);
-        if (typeof (value as Partial<DecimalLike>)?.toNumber === "function") {
-            return (value as DecimalLike).toNumber();
+        if (isDecimal(value)) {
+            return value.toNumber();
         }
         return Number(value);
     }
@@ -360,8 +351,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /**
      * Creates or updates (upsert) multiple records. Prisma has no native bulk
      * upsert, so each record is saved individually inside a transaction —
-     * reusing `options.db` when it's already a transaction client (see
-     * `runTransactional`).
+     * reusing `options.db` when it's already a transaction client.
      */
     async saveMany(objs: DeepPartial<T>[], options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
         const start = this.logger.startPerformLog("run saveMany");
@@ -404,19 +394,21 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /**
-     * Deletes every record matching `where`, returning the deleted records.
+     * Deletes every record matching `where` and returns the deleted records.
      *
-     * Prisma has no `deleteManyAndReturn`, so this does a `findMany` on
-     * `where` first and then re-applies the same `where` to a `deleteMany`,
-     * both inside a transaction (`runTransactional`).
+     * In the absence of a native `deleteManyAndReturn`, this fetches matching records
+     * via `findMany` first, extracts their primary keys, and then deletes them by ID
+     * using `{ [pkName]: { in: pks } }` inside a transaction.
      *
-     * Because the delete is driven by the same `where` (not by the fetched
-     * records), a concurrent change between the two operations can make them
-     * diverge — e.g. a row inserted after the `findMany` matching the `where`
-     * would still be deleted, while a row changed to stop matching wouldn't.
-     * If you need to guarantee no concurrency issues, run this method inside a
-     * `repository.transaction()` with a higher isolation level, e.g.
-     * `TransactionIsolationLevel.SERIALIZABLE`.
+     * Key behaviors:
+     * - **Primary Key Handling:** If `options.select` omits the primary key, it is
+     *   temporarily added to the query so the subsequent batch delete can target
+     *   those exact IDs, and stripped from the returned objects afterward.
+     * - **Concurrency & Isolation:** Deleting strictly by the fetched IDs ensures only
+     *   the exact returned rows are removed (avoiding deleting newly inserted rows that
+     *   match `where`). However, if a row is modified or deleted concurrently between
+     *   the read and the delete step, race conditions can still occur unless wrapped
+     *   in a transaction with an appropriate isolation level (e.g., `SERIALIZABLE`).
      */
     async deleteManyReturning(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
         const start = this.logger.startPerformLog("run deleteManyReturning");
@@ -552,7 +544,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         );
     }
 
-    /** Executes a raw query/statement against the underlying database, used by `@QueryMethod`. */
+    /** Executes a raw query/statement against the underlying database. */
     async query<R = any>(query: string, options?: AdapterQueryOptions): Promise<R> {
         const modifying = options?.modifying ?? false;
         const db = options?.db ?? this.prisma;
@@ -586,9 +578,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /**
-     * Creates multiple records in a single operation. Relation fields are
-     * stripped (see `stripRelationFields`), since Prisma's `createMany` doesn't
-     * support nested writes.
+     * Creates multiple records in a single operation.
      */
     async createMany(
         objs: DeepPartial<T>[],
@@ -643,10 +633,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /**
-     * Fetches the record matching `where` and returns it deep-merged with
-     * `obj`, WITHOUT persisting anything — same behavior the v1 of
-     * VSRepository had (see `mergeEntities`). It's on the caller to decide
-     * what to do with the result (e.g. call `save` next).
+     * Fetches the record matching `where` and returns it merged with `obj`,
+     * WITHOUT persisting anything. Only the configured `relations` are merged;
+     * every other value is replaced. It's on the caller to decide what to do
+     * with the result (e.g. call `save` next).
      */
     async merge<K extends DeepPartial<T>>(
         where: VSRepoWhere<T>,
@@ -700,7 +690,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdate("increment", field, value, where, options);
     }
 
-    /** Same as {@link VSRepoPrisma7Adapter.incrementOne}, subtracting `value` instead of adding it. */
+    /**
+     * Atomically subtracts `value` to `field` on the record matching `where`,
+     * via Prisma's native `{ field: { decrement: value } }` write.
+     */
     async decrementOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
@@ -710,7 +703,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return this.atomicUpdate("decrement", field, value, where, options);
     }
 
-    /** Same as {@link VSRepoPrisma7Adapter.incrementOne}, multiplying the field's current value by `value`. */
+    /**
+     * Atomically multiplies `value` to `field` on the record matching `where`,
+     * via Prisma's native `{ field: { multiply: value } }` write.
+     */
     async multiplyOne<K extends NumericKeys<T>>(
         field: K,
         value: NonNullable<T[K]>,
@@ -721,11 +717,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /**
-     * Same as {@link VSRepoPrisma7Adapter.incrementOne}, dividing the
-     * field's current value by `value`. Division-by-zero is not handled by
-     * the adapter — it's whatever Postgres does natively (raises a
-     * `division_by_zero` error for integer columns; `Infinity`/`NaN` are not
-     * representable in a numeric/decimal column, so those also error).
+     * Atomically divides `value` to `field` on the record matching `where`,
+     * via Prisma's native `{ field: { divide: value } }` write.
      */
     async divideOne<K extends NumericKeys<T>>(
         field: K,

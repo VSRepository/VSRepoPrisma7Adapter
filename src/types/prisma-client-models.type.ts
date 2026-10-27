@@ -6,13 +6,13 @@ import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
  *
  * The resulting union contains only the keys that represent actual Prisma model
  * delegates (e.g. `"user"`, `"post"`, `"comment"`), enabling type-safe
- * auto-complete when configuring `modelName` in `VSRepoPrisma7AdapterConfig`.
+ * auto-complete when configuring `modelName` in `Prisma7AdapterConfig`.
  *
  * @template T - A Prisma Client type that extends `Prisma7ClientLike`.
  *
  * @example
  * ```ts
- * import { PrismaClient } from "@prisma/client";
+ * import { PrismaClient } from "../generated/prisma/client";
  *
  * // Resolves to: "user" | "post" | "comment" | ...
  * type Models = PrismaClientModels<PrismaClient>;
