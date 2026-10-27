@@ -49,7 +49,7 @@ function parseToOneRelation(
 
     const pkValue = field[relation.pk];
 
-    if (pkValue == undefined) {
+    if (pkValue === undefined) {
         return {
             create: { create: field },
             update: relation.restriction === "add" ? { create: field } : { upsert: { create: field, update: field } },

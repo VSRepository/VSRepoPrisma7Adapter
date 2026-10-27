@@ -14,8 +14,8 @@ const ADAPTER_PROVIDER_TO_PRISMA_PROVIDER: Record<PrismaDriverAdapterProvider, P
     sqlserver: "sqlserver",
 };
 
-function isPrismaProvider(value: unknown): value is PrismaProvider {
-    return PrismaProvidersSet.has(value as PrismaProvider);
+function isPrismaProvider(value: string): value is PrismaProvider {
+    return PrismaProvidersSet.has(value);
 }
 
 export function resolveProvider(prisma: unknown, override?: PrismaProvider): PrismaProvider {
@@ -29,7 +29,7 @@ export function resolveProvider(prisma: unknown, override?: PrismaProvider): Pri
         }
     )._engineConfig;
 
-    if (isPrismaProvider(engineConfig?.activeProvider)) {
+    if (typeof engineConfig?.activeProvider === "string" && isPrismaProvider(engineConfig.activeProvider)) {
         return engineConfig.activeProvider;
     }
 
