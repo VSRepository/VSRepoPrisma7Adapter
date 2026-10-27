@@ -121,6 +121,7 @@ export function parsePrismaWriteData<T>(
     obj: PlainObject,
     pkName: string,
     relations?: AdapterRelations<T>,
+    omitPkInUpdate = false,
 ): PrismaWriteData {
     const create: PlainObject = {};
     const update: PlainObject = {};
@@ -132,7 +133,7 @@ export function parsePrismaWriteData<T>(
 
         if (!relation) {
             create[key] = field;
-            if (key !== pkName) update[key] = field;
+            if (!omitPkInUpdate || key !== pkName) update[key] = field;
             continue;
         }
 

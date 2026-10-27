@@ -1,20 +1,3 @@
-/**
- * Faz o merge profundo, EM MEMÓRIA (sem persistir nada no banco), de `result`
- * (registro já encontrado) com `obj` (payload enviado) — réplica exata do
- * comportamento do `merge` da v1: ele só busca o registro e devolve o merge,
- * quem decide o que fazer com o resultado (ex: chamar `save` depois) é quem
- * chamou.
- *
- * Sem `relations`, é um deep merge padrão (arrays são concatenados). Com
- * `relations`:
- *  - to-one (`oto`/`mto`) recebe merge direto (ou vira `null` se `obj` mandar
- *    `null` explicitamente)
- *  - to-many (`otm`/`mtm`) casa os itens de `result[key]` com os de `obj[key]`
- *    pela `pk` configurada: item com PK que bate -> merge entre os dois; item
- *    sem correspondente -> apenas adicionado. Itens existentes que não
- *    aparecem em `obj[key]` são mantidos (merge nunca remove nada).
- */
-
 import merge from "deepmerge";
 import { AdapterRelations } from "../types/adapter-relations.type.js";
 import { PlainObject } from "../types/plain-object.type.js";

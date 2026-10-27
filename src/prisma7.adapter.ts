@@ -344,7 +344,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const pkValue = objAny[this.pkName];
         const readArg = this.resolveReadArg(options);
         const repo = this.getPrismaRepository(options?.db);
-        const { create, update } = parsePrismaWriteData(objAny, this.pkName, this.relations);
+        const { create, update } = parsePrismaWriteData(objAny, this.pkName, this.relations, true);
 
         if (pkValue === undefined) {
             const arg = { ...readArg, data: create };
