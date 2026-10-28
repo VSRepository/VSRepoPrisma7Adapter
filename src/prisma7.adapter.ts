@@ -18,6 +18,7 @@ import {
     VSRepoWhere,
     WithIgnoreConflicts,
 } from "vsrepo";
+import { RETURNING_MANY_PROVIDERS } from "./constants/provider-capabilities.constant.js";
 import { parsePrismaWhere } from "./parsers/where.parser.js";
 import { parsePrismaInclude } from "./parsers/include.parser.js";
 import { parsePrismaSelect } from "./parsers/select.parser.js";
@@ -89,6 +90,26 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             skip: options.pagination?.offset,
             take: options.pagination?.limit,
         };
+    }
+
+    /** Parses a `where` for this adapter's provider (rejecting what the provider cannot run). */
+    private parseWhere(where: VSRepoWhere<T> | undefined): PlainObject | undefined {
+        return parsePrismaWhere(where, this.provider);
+    }
+
+    /**
+     * `createManyReturning` and `updateManyReturning` rely on Prisma's `createManyAndReturn` /
+     * `updateManyAndReturn`, which only exist on PostgreSQL, CockroachDB and SQLite.
+     */
+    private assertReturningManySupported(methodName: string): void {
+        if (RETURNING_MANY_PROVIDERS.has(this.provider)) return;
+
+        throw new VSRepoAdapterError(
+            `'${methodName}' is not supported by the '${this.provider}' provider, since Prisma only provides ` +
+                `createManyAndReturn/updateManyAndReturn on PostgreSQL, CockroachDB and SQLite.`,
+            AdapterErrorCode.NOT_SUPPORTED,
+            null,
+        );
     }
 
     /**
@@ -163,15 +184,15 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         field: K,
         value: NonNullable<T[K]>,
         where: VSRepoWhere<T>,
-        options?: AdapterMethodOptions<T>,
+        options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         const methodName = `${operation}One`;
         const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
             const arg = {
-                ...this.resolveReadArg(options),
-                where: parsePrismaWhere(where),
+                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
             this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
@@ -200,7 +221,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
         try {
             const arg = {
-                where: parsePrismaWhere(where),
+                where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
             this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
@@ -251,7 +272,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
         try {
             const arg = {
-                where: parsePrismaWhere(where) as any,
+                where: this.parseWhere(where) as any,
                 [aggKey]: { [field]: true },
             };
             this.logger.logDebug(`Resolved Prisma arg for ${operation}`, arg);
@@ -305,14 +326,14 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Fetches a single record matching `where`. */
     async findOne(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T | null> {
-        const arg = { ...this.resolveReadArg(options), where: parsePrismaWhere(where) };
+        const arg = { ...this.resolveReadArg(options), where: this.parseWhere(where) };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).findFirst(arg), "findOne", arg);
     }
 
     /** Fetches a single record matching `where`, throwing if none is found. */
     async findOneOrThrow(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T> {
-        const arg = { ...this.resolveReadArg(options), where: parsePrismaWhere(where) };
+        const arg = { ...this.resolveReadArg(options), where: this.parseWhere(where) };
 
         return this.execMethod(
             () => this.getPrismaRepository(options?.db).findFirstOrThrow(arg),
@@ -323,7 +344,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Fetches all records matching `where`. */
     async findMany(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T[]> {
-        const arg = { ...this.resolveReadArg(options), where: parsePrismaWhere(where) };
+        const arg = { ...this.resolveReadArg(options), where: this.parseWhere(where) };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).findMany(arg), "findMany", arg);
     }
@@ -332,7 +353,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async save(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const objAny = obj as PlainObject;
         const pkValue = objAny[this.pkName];
-        const readArg = this.resolveReadArg(options);
+        const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
         const repo = this.getPrismaRepository(options?.db);
         const { create, update } = parsePrismaWriteData(objAny, this.pkName, this.relations, true);
 
@@ -380,14 +401,17 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Deletes a single record matching `where`. */
     async delete(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
-        const arg = { ...this.resolveReadArg(options), where: parsePrismaWhere(where) };
+        const arg = {
+            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            where: this.parseWhere(where),
+        };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).delete(arg), "delete", arg);
     }
 
     /** Deletes every record matching `where`, returning the count of affected rows. */
     async deleteMany(where: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<CountResult> {
-        const arg = { where: parsePrismaWhere(where) };
+        const arg = { where: this.parseWhere(where) };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).deleteMany(arg), "deleteMany", arg);
     }
@@ -413,8 +437,11 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const start = this.logger.startPerformLog("run deleteManyReturning");
 
         try {
-            const prismaWhere = parsePrismaWhere(where);
-            const findArg = { ...this.resolveReadArg(options), where: prismaWhere };
+            const prismaWhere = this.parseWhere(where);
+            const findArg = {
+                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                where: prismaWhere,
+            };
 
             const userRequestedPk = findArg.include || !findArg.select || !!(findArg.select as any)[this.pkName];
 
@@ -457,8 +484,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async update(where: VSRepoWhere<T>, obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { update } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
         const arg = {
-            ...this.resolveReadArg(options),
-            where: parsePrismaWhere(where),
+            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            where: this.parseWhere(where),
             data: update,
         };
 
@@ -472,12 +499,16 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
         const data = this.stripRelationFields(obj as PlainObject);
-        const arg = { where: parsePrismaWhere(where), data };
+        const arg = { where: this.parseWhere(where), data };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).updateMany(arg), "updateMany", arg);
     }
 
-    /** Updates every record matching `where`, returning the updated records. */
+    /**
+     * Updates every record matching `where`, returning the updated records.
+     *
+     * Rejects with `NOT_SUPPORTED` on providers without `updateManyAndReturn` (MySQL and SQL Server).
+     */
     async updateManyReturning(
         where: VSRepoWhere<T>,
         obj: DeepPartial<T>,
@@ -486,31 +517,30 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const start = this.logger.startPerformLog("run updateManyReturning");
 
         try {
-            const data = this.stripRelationFields(obj as PlainObject);
-            const readArg = this.resolveReadArg(options);
-            const arg = {
-                ...readArg,
-                where: parsePrismaWhere(where),
-                data,
-            };
+            this.assertReturningManySupported("updateManyReturning");
 
-            this.logger.logDebug("Resolved Prisma arg for updateManyReturning", arg);
+            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const arg = { where: this.parseWhere(where), data: this.stripRelationFields(obj as PlainObject) };
 
-            const result = await this.runTransactional(options?.db, async tx => {
-                const repo = this.getPrismaRepository(tx);
-                const updated = await repo.updateManyAndReturn({
-                    ...arg,
-                    include: undefined,
-                    select: { [this.pkName]: true },
+            this.logger.logDebug("Resolved Prisma args for updateManyReturning", { ...readArg, ...arg });
+
+            let result: any;
+
+            if (!readArg.select && !readArg.include) {
+                result = await this.getPrismaRepository(options?.db).updateManyAndReturn(arg);
+            } else {
+                result = await this.runTransactional(options?.db, async tx => {
+                    const repo = this.getPrismaRepository(tx);
+                    const updated = await repo.updateManyAndReturn({ ...arg, select: { [this.pkName]: true } });
+
+                    const idsUpdated = updated.map((_: any) => _[this.pkName]);
+
+                    return await repo.findMany({
+                        ...readArg,
+                        where: { [this.pkName]: { in: idsUpdated } },
+                    });
                 });
-
-                const idsUpdated = updated.map((_: any) => _[this.pkName]);
-
-                return repo.findMany({
-                    ...readArg,
-                    where: { [this.pkName]: { in: idsUpdated } },
-                });
-            });
+            }
 
             this.logger.endPerformLog(start);
 
@@ -524,14 +554,14 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Returns the number of records matching `where`. */
     async count(where?: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<number> {
-        const arg = { where: parsePrismaWhere(where) };
+        const arg = { where: this.parseWhere(where) };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).count(arg), "count", arg);
     }
 
     /** Checks whether at least one record matching `where` exists. */
     async exists(where?: VSRepoWhere<T>, options?: RestrictAdapterMethodOptions<T>): Promise<boolean> {
-        const arg = { where: parsePrismaWhere(where), select: { [this.pkName]: true } };
+        const arg = { where: this.parseWhere(where), select: { [this.pkName]: true } };
 
         return this.execMethod(
             async () => {
@@ -571,7 +601,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /** Creates a single record. */
     async create(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { create } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
-        const arg = { ...this.resolveReadArg(options), data: create };
+        const arg = {
+            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            data: create,
+        };
 
         return this.execMethod(() => this.getPrismaRepository(options?.db).create(arg), "create", arg);
     }
@@ -591,6 +624,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /**
      * Creates multiple records in a single operation, returning the created records.
+     *
+     * Rejects with `NOT_SUPPORTED` on providers without `createManyAndReturn` (MySQL and SQL Server).
      */
     async createManyReturning(
         objs: DeepPartial<T>[],
@@ -599,27 +634,33 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const start = this.logger.startPerformLog("run createManyReturning");
 
         try {
-            const data = objs.map(obj => this.stripRelationFields(obj as PlainObject));
-            const readArg = this.resolveReadArg(options);
-            const arg = { ...readArg, data, skipDuplicates: options?.ignoreConflicts };
+            this.assertReturningManySupported("createManyReturning");
 
-            this.logger.logDebug("Resolved Prisma arg for createManyReturning", arg);
+            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const arg = {
+                data: objs.map(obj => this.stripRelationFields(obj as PlainObject)),
+                skipDuplicates: options?.ignoreConflicts,
+            };
 
-            const result = await this.runTransactional(options?.db, async tx => {
-                const repo = this.getPrismaRepository(tx);
-                const created = await repo.createManyAndReturn({
-                    ...arg,
-                    include: undefined,
-                    select: { [this.pkName]: true },
+            this.logger.logDebug("Resolved Prisma args for createManyReturning", { ...readArg, ...arg });
+
+            let result: any;
+
+            if (!readArg.select && !readArg.include) {
+                result = await this.getPrismaRepository(options?.db).createManyAndReturn(arg);
+            } else {
+                result = await this.runTransactional(options?.db, async tx => {
+                    const repo = this.getPrismaRepository(tx);
+                    const created = await repo.createManyAndReturn({ ...arg, select: { [this.pkName]: true } });
+
+                    const idsCreated = created.map((_: any) => _[this.pkName]);
+
+                    return await repo.findMany({
+                        ...readArg,
+                        where: { [this.pkName]: { in: idsCreated } },
+                    });
                 });
-
-                const idsCreated = created.map((_: any) => _[this.pkName]);
-
-                return repo.findMany({
-                    ...readArg,
-                    where: { [this.pkName]: { in: idsCreated } },
-                });
-            });
+            }
 
             this.logger.endPerformLog(start);
 
@@ -642,7 +683,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         obj: K,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<(K & T) | null> {
-        const arg = { ...this.resolveReadArg(options), where: parsePrismaWhere(where) };
+        const arg = {
+            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            where: this.parseWhere(where),
+        };
 
         return this.execMethod(
             async () => {
@@ -667,8 +711,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const parsedUpdate = parsePrismaWriteData(update as PlainObject, this.pkName, this.relations).update;
 
         const arg = {
-            ...this.resolveReadArg(options),
-            where: parsePrismaWhere(where),
+            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            where: this.parseWhere(where),
             create: parsedCreate,
             update: parsedUpdate,
         };

@@ -103,6 +103,8 @@ function setup(config: Record<string, unknown> = {}, prismaOverrides: Record<str
     return { adapter, prisma, user, tx, txUser };
 }
 
+const where = { name: { contains: "jo", ignoreCase: true } };
+
 describe("VSRepoPrisma7Adapter", () => {
     describe("constructor", () => {
         it("should throw MISSING_DB_CLIENT when the prisma client is null", () => {
@@ -301,6 +303,65 @@ describe("VSRepoPrisma7Adapter", () => {
                 code: AdapterErrorCode.NOT_SUPPORTED,
             });
             expect(user.findMany).not.toHaveBeenCalled();
+        });
+
+        describe("ignoreCase", () => {
+            it.each(["postgresql", "cockroachdb"] as const)("should translate ignoreCase on %s", async provider => {
+                const { adapter, user } = setup({ provider });
+                user.findMany!.mockResolvedValue([]);
+
+                await adapter.findMany({ name: { contains: "jo", ignoreCase: true } });
+
+                expect(user.findMany).toHaveBeenCalledWith({
+                    where: { name: { contains: "jo", mode: "insensitive" } },
+                });
+            });
+
+            it.each(["mysql", "sqlite", "sqlserver"] as const)(
+                "should reject ignoreCase on %s with NOT_SUPPORTED before touching the database",
+                async provider => {
+                    const { adapter, user } = setup({ provider });
+
+                    await expect(
+                        adapter.findMany({ name: { contains: "jo", ignoreCase: true } }),
+                    ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+                    expect(user.findMany).not.toHaveBeenCalled();
+                },
+            );
+
+            it("should keep working on providers without insensitive mode when ignoreCase is not used", async () => {
+                const { adapter, user } = setup({ provider: "mysql" });
+                user.findMany!.mockResolvedValue([]);
+
+                await adapter.findMany({ name: { contains: "jo", ignoreCase: false } });
+
+                expect(user.findMany).toHaveBeenCalledWith({ where: { name: { contains: "jo" } } });
+            });
+
+            it.each([
+                ["findOne", (a: any) => a.findOne(where)],
+                ["findOneOrThrow", (a: any) => a.findOneOrThrow(where)],
+                ["count", (a: any) => a.count(where)],
+                ["exists", (a: any) => a.exists(where)],
+                ["merge", (a: any) => a.merge(where, { name: "x" })],
+                ["update", (a: any) => a.update(where, { name: "x" })],
+                ["updateMany", (a: any) => a.updateMany(where, { name: "x" })],
+                ["updateManyReturning", (a: any) => a.updateManyReturning(where, { name: "x" })],
+                ["delete", (a: any) => a.delete(where)],
+                ["deleteMany", (a: any) => a.deleteMany(where)],
+                ["deleteManyReturning", (a: any) => a.deleteManyReturning(where)],
+                ["incrementOne", (a: any) => a.incrementOne("age", 1, where)],
+                ["incrementMany", (a: any) => a.incrementMany("age", 1, where)],
+                ["sum", (a: any) => a.sum("age", where)],
+            ])("should be enforced by %s", async (_method, run) => {
+                const { adapter, user, txUser } = setup({ provider: "sqlite" });
+
+                await expect(run(adapter)).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+
+                for (const delegate of [user, txUser]) {
+                    for (const fn of Object.values(delegate)) expect(fn).not.toHaveBeenCalled();
+                }
+            });
         });
 
         it("should wrap unknown errors in a VSRepoAdapterError", async () => {
@@ -609,8 +670,8 @@ describe("VSRepoPrisma7Adapter", () => {
     describe("updateManyReturning", () => {
         it("should update inside a transaction and re-read the updated records", async () => {
             const { adapter, prisma, user, txUser } = setup();
-            txUser.updateManyAndReturn!.mockResolvedValue([{ id: "1" }, { id: "2" }]);
-            txUser.findMany!.mockResolvedValue([
+            user.updateManyAndReturn!.mockResolvedValue([{ id: "1" }, { id: "2" }]);
+            user.findMany!.mockResolvedValue([
                 { id: "1", name: "X" },
                 { id: "2", name: "X" },
             ]);
@@ -618,15 +679,13 @@ describe("VSRepoPrisma7Adapter", () => {
             const result = await adapter.updateManyReturning({ age: { gt: 18 } }, { name: "X" });
 
             expect(result).toHaveLength(2);
-            expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-            expect(txUser.updateManyAndReturn).toHaveBeenCalledWith({
+            expect(prisma.$transaction).toHaveBeenCalledTimes(0);
+            expect(user.updateManyAndReturn).toHaveBeenCalledWith({
                 where: { age: { gt: 18 } },
                 data: { name: "X" },
-                include: undefined,
-                select: { id: true },
             });
-            expect(txUser.findMany).toHaveBeenCalledWith({ where: { id: { in: ["1", "2"] } } });
-            expect(user.updateManyAndReturn).not.toHaveBeenCalled();
+            expect(txUser.updateManyAndReturn).not.toHaveBeenCalled();
+            expect(txUser.findMany).not.toHaveBeenCalled();
         });
 
         it("should pass the read options to the final re-read, not to the update", async () => {
@@ -634,22 +693,51 @@ describe("VSRepoPrisma7Adapter", () => {
             txUser.updateManyAndReturn!.mockResolvedValue([{ id: "1" }]);
             txUser.findMany!.mockResolvedValue([]);
 
-            await adapter.updateManyReturning({}, { name: "X" }, {
-                relations: { posts: true },
-                order: { name: "ASC" },
-                pagination: { limit: 5 },
-            } as any);
+            await adapter.updateManyReturning(
+                {},
+                { name: "X" },
+                {
+                    relations: { posts: true },
+                },
+            );
 
             const updateArg = txUser.updateManyAndReturn!.mock.calls[0]![0];
-            expect(updateArg.include).toBeUndefined();
-            expect(updateArg.select).toEqual({ id: true });
+            expect(updateArg).toEqual({ where: {}, data: { name: "X" }, select: { id: true } });
+            for (const key of ["include", "orderBy", "skip", "take"]) {
+                expect(updateArg).not.toHaveProperty(key);
+            }
 
             expect(txUser.findMany).toHaveBeenCalledWith({
                 include: { posts: true },
-                orderBy: { name: "asc" },
-                take: 5,
                 where: { id: { in: ["1"] } },
             });
+        });
+
+        it.each(["mysql", "sqlserver"] as const)(
+            "should reject with NOT_SUPPORTED on %s without opening a transaction",
+            async provider => {
+                const { adapter, prisma, user, txUser } = setup({ provider });
+
+                const error = await adapter.updateManyReturning({}, { name: "X" }).catch(e => e);
+
+                expect(error).toBeInstanceOf(VSRepoAdapterError);
+                expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
+                expect(error.message).toContain("updateManyReturning");
+                expect(error.message).toContain(provider);
+                expect(prisma.$transaction).not.toHaveBeenCalled();
+                expect(user.updateManyAndReturn).not.toHaveBeenCalled();
+                expect(txUser.updateManyAndReturn).not.toHaveBeenCalled();
+            },
+        );
+
+        it.each(["postgresql", "cockroachdb", "sqlite"] as const)("should run on %s", async provider => {
+            const { adapter, txUser } = setup({ provider });
+            txUser.updateManyAndReturn!.mockResolvedValue([{ id: "1" }]);
+            txUser.findMany!.mockResolvedValue([{ id: "1" }]);
+
+            await expect(adapter.updateManyReturning({}, { name: "X" }, { select: { id: true } })).resolves.toEqual([
+                { id: "1" },
+            ]);
         });
 
         it("should reuse an active transaction client", async () => {
@@ -672,8 +760,8 @@ describe("VSRepoPrisma7Adapter", () => {
         });
 
         it("should map errors", async () => {
-            const { adapter, txUser } = setup();
-            txUser.updateManyAndReturn!.mockRejectedValue(prismaError("PrismaClientValidationError"));
+            const { adapter, user } = setup();
+            user.updateManyAndReturn!.mockRejectedValue(prismaError("PrismaClientValidationError"));
 
             await expect(adapter.updateManyReturning({}, { name: "X" })).rejects.toMatchObject({
                 code: AdapterErrorCode.INVALID_DATA,
@@ -727,6 +815,7 @@ describe("VSRepoPrisma7Adapter", () => {
 
             const result = await adapter.createManyReturning([{ name: "A" }, { name: "B" }], {
                 ignoreConflicts: true,
+                select: { id: true, name: true },
             });
 
             expect(result).toEqual([
@@ -740,7 +829,10 @@ describe("VSRepoPrisma7Adapter", () => {
                 include: undefined,
                 select: { id: true },
             });
-            expect(txUser.findMany).toHaveBeenCalledWith({ where: { id: { in: ["1", "2"] } } });
+            expect(txUser.findMany).toHaveBeenCalledWith({
+                where: { id: { in: ["1", "2"] } },
+                select: { id: true, name: true },
+            });
         });
 
         it("should pass the read options only to the final re-read", async () => {
@@ -755,6 +847,33 @@ describe("VSRepoPrisma7Adapter", () => {
                 include: { posts: true },
                 where: { id: { in: ["1"] } },
             });
+        });
+
+        it.each(["mysql", "sqlserver"] as const)(
+            "should reject with NOT_SUPPORTED on %s without opening a transaction",
+            async provider => {
+                const { adapter, prisma, user, txUser } = setup({ provider });
+
+                const error = await adapter.createManyReturning([{ name: "A" }]).catch(e => e);
+
+                expect(error).toBeInstanceOf(VSRepoAdapterError);
+                expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
+                expect(error.message).toContain("createManyReturning");
+                expect(error.message).toContain(provider);
+                expect(prisma.$transaction).not.toHaveBeenCalled();
+                expect(user.createManyAndReturn).not.toHaveBeenCalled();
+                expect(txUser.createManyAndReturn).not.toHaveBeenCalled();
+            },
+        );
+
+        it.each(["postgresql", "cockroachdb", "sqlite"] as const)("should run on %s", async provider => {
+            const { adapter, txUser } = setup({ provider });
+            txUser.createManyAndReturn!.mockResolvedValue([{ id: "1" }]);
+            txUser.findMany!.mockResolvedValue([{ id: "1" }]);
+
+            await expect(adapter.createManyReturning([{ name: "A" }], { select: { id: true } })).resolves.toEqual([
+                { id: "1" },
+            ]);
         });
 
         it("should reuse an active transaction client", async () => {
@@ -776,8 +895,8 @@ describe("VSRepoPrisma7Adapter", () => {
         });
 
         it("should map errors", async () => {
-            const { adapter, txUser } = setup();
-            txUser.createManyAndReturn!.mockRejectedValue(
+            const { adapter, user } = setup();
+            user.createManyAndReturn!.mockRejectedValue(
                 prismaError("PrismaClientKnownRequestError", { code: "P2002" }),
             );
 

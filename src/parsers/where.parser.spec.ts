@@ -1,4 +1,5 @@
 import { AdapterErrorCode, DecimalLike, VSRepoAdapterError, VSRepoWhere } from "vsrepo";
+import { PrismaProvider } from "../types/prisma-provider.type.js";
 import { parsePrismaWhere } from "./where.parser.js";
 
 interface User {
@@ -119,6 +120,59 @@ describe("parsePrismaWhere", () => {
             const where: VSRepoWhere<User> = { name: { startsWith: "j", ignoreCase: true } };
 
             expect(parsePrismaWhere(where)?.name).not.toHaveProperty("ignoreCase");
+        });
+
+        describe("provider support", () => {
+            const insensitive = { name: { contains: "john", ignoreCase: true } } as VSRepoWhere<User>;
+            const unsupportedProviders = ["mysql", "sqlite", "sqlserver"] as const;
+
+            it.each(["postgresql", "cockroachdb"] as const)("should convert ignoreCase to mode for %s", provider => {
+                expect(parsePrismaWhere(insensitive, provider)).toEqual({
+                    name: { contains: "john", mode: "insensitive" },
+                });
+            });
+
+            it.each(unsupportedProviders)("should throw NOT_SUPPORTED for %s when ignoreCase is true", provider => {
+                const parse = () => parsePrismaWhere(insensitive, provider);
+
+                expect(parse).toThrow(VSRepoAdapterError);
+                expect(parse).toThrow(expect.objectContaining({ code: AdapterErrorCode.NOT_SUPPORTED }));
+                expect(parse).toThrow(new RegExp(`'ignoreCase'.*'${provider}'`));
+            });
+
+            it.each(unsupportedProviders)("should accept ignoreCase: false/undefined for %s", provider => {
+                const where = [
+                    { name: { contains: "john", ignoreCase: false } },
+                    { name: { contains: "john", ignoreCase: undefined } },
+                ] as VSRepoWhere<User>[];
+
+                expect(parsePrismaWhere(where[0], provider)).toEqual({ name: { contains: "john" } });
+                expect(parsePrismaWhere(where[1], provider)).toEqual({ name: { contains: "john" } });
+            });
+
+            it.each([
+                ["not", { name: { not: { contains: "j", ignoreCase: true } } }],
+                ["OR", { OR: [{ name: "a" }, { name: { contains: "j", ignoreCase: true } }] }],
+                ["AND", { AND: [{ name: { contains: "j", ignoreCase: true } }] }],
+                ["NOT", { NOT: { name: { contains: "j", ignoreCase: true } } }],
+                ["_some", { address: { _some: { city: { contains: "j", ignoreCase: true } } } }],
+                ["_every", { address: { _every: { city: { contains: "j", ignoreCase: true } } } }],
+                ["_none", { address: { _none: { city: { contains: "j", ignoreCase: true } } } }],
+                ["_with", { address: { _with: { city: { contains: "j", ignoreCase: true } } } }],
+                ["_without", { address: { _without: { city: { contains: "j", ignoreCase: true } } } }],
+            ] as const)("should also reject ignoreCase nested inside %s", (_label, where) => {
+                const parse = () => parsePrismaWhere(where as unknown as VSRepoWhere<User>, "mysql");
+
+                expect(parse).toThrow(expect.objectContaining({ code: AdapterErrorCode.NOT_SUPPORTED }));
+            });
+
+            it("should not validate the provider when none is given", () => {
+                const provider: PrismaProvider | undefined = undefined;
+
+                expect(parsePrismaWhere(insensitive, provider)).toEqual({
+                    name: { contains: "john", mode: "insensitive" },
+                });
+            });
         });
     });
 
