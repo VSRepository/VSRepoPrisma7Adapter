@@ -16,8 +16,9 @@ export interface ProviderCapabilities {
     insensitiveMode: boolean;
     /**
      * Whether a read made OUTSIDE an open transaction returns immediately without seeing its
-     * uncommitted writes. False on SQLite (single connection: it sees them) and on SQL Server
-     * (READ COMMITTED: the read blocks on the transaction's locks).
+     * uncommitted writes. False on SQLite (single connection: it sees them), on SQL Server
+     * (READ COMMITTED: the read blocks on the transaction's locks) and on CockroachDB
+     * (SERIALIZABLE: the read waits for the writer's intents).
      */
     isolatedReadsDuringTransaction: boolean;
 }

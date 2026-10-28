@@ -88,17 +88,20 @@
     "test:integration:mysql": "vitest run --config vitest.integration.config.ts test/mysql",
     "test:integration:sqlite": "vitest run --config vitest.integration.config.ts test/sqlite",
     "test:integration:sqlserver": "vitest run --config vitest.integration.config.ts test/sqlserver",
+    "test:integration:cockroachdb": "vitest run --config vitest.integration.config.ts test/cockroachdb",
     "full-validation": "bun run typecheck && bun run lint && bun run format:check && bun run test",
-    "prisma:generate": "bun run prisma:generate:postgres && bun run prisma:generate:sqlserver && bun run prisma:generate:sqlite && bun run prisma:generate:mysql",
+    "prisma:generate": "bun run prisma:generate:postgres && bun run prisma:generate:sqlserver && bun run prisma:generate:sqlite && bun run prisma:generate:mysql && bun run prisma:generate:cockroachdb",
     "prisma:generate:postgres": "bunx prisma generate --config prisma/postgres/prisma.config.ts",
     "prisma:generate:sqlserver": "bunx prisma generate --config prisma/sqlserver/prisma.config.ts",
     "prisma:generate:mysql": "bunx prisma generate --config prisma/mysql/prisma.config.ts",
     "prisma:generate:sqlite": "bunx prisma generate --config prisma/sqlite/prisma.config.ts",
-    "prisma:migrate": "bun run prisma:migrate:postgres && bun run prisma:migrate:sqlserver && bun run prisma:migrate:sqlite && bun run prisma:migrate:mysql",
+    "prisma:generate:cockroachdb": "bunx prisma generate --config prisma/cockroachdb/prisma.config.ts",
+    "prisma:migrate": "bun run prisma:migrate:postgres && bun run prisma:migrate:sqlserver && bun run prisma:migrate:sqlite && bun run prisma:migrate:mysql && bun run prisma:migrate:cockroachdb",
     "prisma:migrate:postgres": "bunx prisma migrate dev --config prisma/postgres/prisma.config.ts",
     "prisma:migrate:sqlserver": "bunx prisma migrate dev --config prisma/sqlserver/prisma.config.ts",
     "prisma:migrate:mysql": "bunx prisma migrate dev --config prisma/mysql/prisma.config.ts",
-    "prisma:migrate:sqlite": "bunx prisma migrate dev --config prisma/sqlite/prisma.config.ts"
+    "prisma:migrate:sqlite": "bunx prisma migrate dev --config prisma/sqlite/prisma.config.ts",
+    "prisma:migrate:cockroachdb": "bunx prisma migrate dev --config prisma/cockroachdb/prisma.config.ts"
   },
   "type": "module",
   "types": "./dist/index.d.ts"
