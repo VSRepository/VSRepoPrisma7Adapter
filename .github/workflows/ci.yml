@@ -198,10 +198,58 @@ jobs:
             - name: Run integration tests
               run: bun run test:integration:sqlserver
 
+    integration-cockroachdb:
+        name: Integration (CockroachDB)
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+
+        env:
+            COCKROACHDB_URL: postgresql://root@localhost:26257/adapter_db?sslmode=disable
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            # The image needs `start-single-node`, which service containers cannot receive.
+            - name: Start CockroachDB
+              run: |
+                  docker run -d --name cockroach -p 26257:26257 \
+                    cockroachdb/cockroach:v26.3.3 start-single-node --insecure
+
+            - name: Wait for CockroachDB and prepare the database
+              run: |
+                  for i in $(seq 1 30); do
+                    docker exec cockroach ./cockroach sql --insecure -e "SELECT 1" && break
+                    echo "Waiting for CockroachDB ($i/30)..."
+                    sleep 2
+                  done
+                  docker exec cockroach ./cockroach sql --insecure \
+                    -e "SET CLUSTER SETTING sql.defaults.create_table_with_schema_locked = false" \
+                    -e "CREATE DATABASE adapter_db"
+
+            - name: Generate Prisma Client
+              run: bun run prisma:generate:cockroachdb
+
+            - name: Apply database migrations
+              run: bunx prisma migrate deploy --config prisma/cockroachdb/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration:cockroachdb
+
     build:
         name: Build
         runs-on: ubuntu-latest
-        needs: [lint, test, integration, integration-sqlserver]
+        needs: [lint, test, integration, integration-sqlserver, integration-cockroachdb]
         steps:
             - uses: actions/checkout@v7
 
