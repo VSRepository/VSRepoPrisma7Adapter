@@ -13,3 +13,5 @@ const adapter = new PrismaMariaDb({
 const prismaMySql = new PrismaClient({ adapter });
 
 export { prismaMySql };
+
+await prismaMySql.user.findMany();
