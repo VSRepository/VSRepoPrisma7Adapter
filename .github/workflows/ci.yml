@@ -5,6 +5,11 @@ on:
         branches: [main]
     pull_request:
         branches: [main]
+    # Lets `publish.yml` run the whole pipeline before publishing a tag.
+    workflow_call:
+
+permissions:
+    contents: read
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
@@ -41,24 +46,6 @@ jobs:
             matrix:
                 node-version: [22, 24, 26]
 
-        # services:
-        #     postgres:
-        #         image: postgres:16
-        #         env:
-        #             POSTGRES_USER: vsrepo
-        #             POSTGRES_PASSWORD: vsrepo
-        #             POSTGRES_DB: vsrepo_test
-        #         ports:
-        #             - 5432:5432
-        #         options: >-
-        #             --health-cmd "pg_isready -U vsrepo"
-        #             --health-interval 5s
-        #             --health-timeout 5s
-        #             --health-retries 10
-
-        # env:
-        #     POSTGRES_URL: postgresql://vsrepo:vsrepo@localhost:5432/vsrepo_test?schema=public
-
         steps:
             - uses: actions/checkout@v7
 
@@ -73,19 +60,148 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
-            # - name: Generate Prisma Client
-            #   run: bunx prisma generate
-
-            # - name: Apply database migrations
-            #   run: bunx prisma migrate deploy
-
             - name: Run tests on Node ${{ matrix.node-version }}
               run: npm test
+
+    integration:
+        name: Integration (PostgreSQL, MySQL, SQLite)
+        runs-on: ubuntu-latest
+        timeout-minutes: 15
+
+        services:
+            postgres:
+                image: postgres:16
+                env:
+                    POSTGRES_USER: vsrepo
+                    POSTGRES_PASSWORD: vsrepo
+                    POSTGRES_DB: vsrepo_test
+                ports:
+                    - 5432:5432
+                options: >-
+                    --health-cmd "pg_isready -U vsrepo"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 10
+
+            mysql:
+                image: mysql:8.4
+                env:
+                    MYSQL_ROOT_PASSWORD: root
+                    MYSQL_DATABASE: vsrepo_test
+                    MYSQL_USER: vsrepo
+                    MYSQL_PASSWORD: vsrepo
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 20
+
+        env:
+            POSTGRES_URL: postgresql://vsrepo:vsrepo@localhost:5432/vsrepo_test
+            MYSQL_URL: mysql://vsrepo:vsrepo@localhost:3306/vsrepo_test
+            MYSQL_HOST: localhost
+            MYSQL_PORT: "3306"
+            MYSQL_USER: vsrepo
+            MYSQL_PASSWORD: vsrepo
+            MYSQL_NAME: vsrepo_test
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Generate Prisma Clients
+              run: |
+                  bun run prisma:generate:postgres
+                  bun run prisma:generate:mysql
+                  bun run prisma:generate:sqlite
+
+            - name: Apply database migrations
+              run: |
+                  bunx prisma migrate deploy --config prisma/postgres/prisma.config.ts
+                  bunx prisma migrate deploy --config prisma/mysql/prisma.config.ts
+                  bunx prisma migrate deploy --config prisma/sqlite/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration test/postgres test/mysql test/sqlite
+
+    # SQL Server is isolated: its image is heavy and slow to start, so it must not delay (or break)
+    # the other databases.
+    integration-sqlserver:
+        name: Integration (SQL Server)
+        runs-on: ubuntu-latest
+        timeout-minutes: 20
+        # TODO: this job has never run against a real SQL Server yet. Remove `continue-on-error`
+        # once it has been green a couple of times, so that it becomes a blocking check.
+        continue-on-error: true
+
+        services:
+            sqlserver:
+                image: mcr.microsoft.com/mssql/server:2022-latest
+                env:
+                    ACCEPT_EULA: "Y"
+                    MSSQL_SA_PASSWORD: Vsrepo_Test1
+                ports:
+                    - 1433:1433
+                options: >-
+                    --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $MSSQL_SA_PASSWORD -Q 'SELECT 1'"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 20
+                    --health-start-period 20s
+
+        env:
+            SQLSERVER_URL: sqlserver://localhost:1433;database=vsrepo_test;user=sa;password=Vsrepo_Test1;trustServerCertificate=true
+            SQLSERVER_HOST: localhost
+            SQLSERVER_USER: sa
+            SQLSERVER_PASSWORD: Vsrepo_Test1
+            SQLSERVER_NAME: vsrepo_test
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Generate Prisma Client
+              run: bun run prisma:generate:sqlserver
+
+            # The container does not create the database by itself.
+            - name: Create database
+              run: |
+                  docker exec "$(docker ps -q --filter ancestor=mcr.microsoft.com/mssql/server:2022-latest)" \
+                    /opt/mssql-tools18/bin/sqlcmd -b -C -S localhost -U sa -P "$SQLSERVER_PASSWORD" \
+                    -Q "CREATE DATABASE $SQLSERVER_NAME"
+
+            - name: Apply database migrations
+              run: bunx prisma migrate deploy --config prisma/sqlserver/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration:sqlserver
 
     build:
         name: Build
         runs-on: ubuntu-latest
-        needs: [lint, test]
+        needs: [lint, test, integration, integration-sqlserver]
         steps:
             - uses: actions/checkout@v7
 
