@@ -715,48 +715,48 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             });
         });
 
-        describe("merge", () => {
-            it("should return null when nothing matches", async () => {
-                await expect(users.merge({ email: "nobody" }, { name: "x" })).resolves.toBeNull();
-            });
+        // describe("merge", () => {
+        //     it("should return null when nothing matches", async () => {
+        //         await expect(users.merge({ email: "nobody" }, { name: "x" })).resolves.toBeNull();
+        //     });
 
-            it("should merge the stored record with obj without persisting it", async () => {
-                const john = await seedUser({ name: "John", balance: 5 });
+        //     it("should merge the stored record with obj without persisting it", async () => {
+        //         const john = await seedUser({ name: "John", balance: 5 });
 
-                const merged = await users.merge({ id: john.id }, { name: "Johnny" });
+        //         const merged = await users.merge({ id: john.id }, { name: "Johnny" });
 
-                expect(merged).toMatchObject({ id: john.id, name: "Johnny", balance: 5 });
-                await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
-                    name: "John",
-                });
-            });
+        //         expect(merged).toMatchObject({ id: john.id, name: "Johnny", balance: 5 });
+        //         await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
+        //             name: "John",
+        //         });
+        //     });
 
-            it("should merge relations given by obj", async () => {
-                const john = await seedUser({ name: "John" });
-                const first = await seedPost(john.id, { title: "first" });
+        //     it("should merge relations given by obj", async () => {
+        //         const john = await seedUser({ name: "John" });
+        //         const first = await seedPost(john.id, { title: "first" });
 
-                const merged = await users.merge(
-                    { id: john.id },
-                    { posts: [{ id: first.id, title: "renamed" }] } as any,
-                    {
-                        relations: { posts: true },
-                    } as any,
-                );
+        //         const merged = await users.merge(
+        //             { id: john.id },
+        //             { posts: [{ id: first.id, title: "renamed" }] } as any,
+        //             {
+        //                 relations: { posts: true },
+        //             } as any,
+        //         );
 
-                expect(merged!.posts).toEqual([expect.objectContaining({ id: first.id, title: "renamed" })]);
-            });
+        //         expect(merged!.posts).toEqual([expect.objectContaining({ id: first.id, title: "renamed" })]);
+        //     });
 
-            it("should persist a merged record through save when no relation is loaded", async () => {
-                const john = await seedUser({ name: "John" });
+        //     it("should persist a merged record through save when no relation is loaded", async () => {
+        //         const john = await seedUser({ name: "John" });
 
-                const merged = await users.merge({ id: john.id }, { name: "Johnny" });
-                await users.save(merged as any);
+        //         const merged = await users.merge({ id: john.id }, { name: "Johnny" });
+        //         await users.save(merged as any);
 
-                await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
-                    name: "Johnny",
-                });
-            });
-        });
+        //         await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
+        //             name: "Johnny",
+        //         });
+        //     });
+        // });
 
         describe("Decimal values", () => {
             it("should round-trip a Decimal column", async () => {
@@ -768,15 +768,15 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 expect(found!.price.toNumber()).toBe(10.5);
             });
 
-            it("should keep the Decimal instance when merging", async () => {
-                const john = await seedUser();
-                const post = await seedPost(john.id, { price: "19.99" });
+            // it("should keep the Decimal instance when merging", async () => {
+            //     const john = await seedUser();
+            //     const post = await seedPost(john.id, { price: "19.99" });
 
-                const merged = await posts.merge({ id: post.id }, { title: "renamed" });
+            //     const merged = await posts.merge({ id: post.id }, { title: "renamed" });
 
-                expect(typeof merged!.price.toNumber).toBe("function");
-                expect(merged!.price.toNumber()).toBe(19.99);
-            });
+            //     expect(typeof merged!.price.toNumber).toBe("function");
+            //     expect(merged!.price.toNumber()).toBe(19.99);
+            // });
 
             it("should accept a Decimal-like value as an atomic operand on a Decimal column", async () => {
                 const john = await seedUser();

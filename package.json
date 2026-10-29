@@ -33,7 +33,7 @@
   },
   "peerDependencies": {
     "@prisma/client": "^7.10.0",
-    "vsrepo": "^3.0.0-dev.1"
+    "vsrepo": "^3.0.0-dev.2"
   },
   "exports": {
     ".": {
@@ -46,7 +46,7 @@
     "email": "joaodev.azevedo@outlook.com",
     "url": "https://github.com/VSRepository/VSRepoPrisma7Adapter/issues"
   },
-  "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
+  "description": "VSRepository adapter implementation backed by Prisma 7.",
   "engines": {
     "node": ">=22"
   },
@@ -73,9 +73,9 @@
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
     "build": "bun run clean && tsc -p tsconfig.build.json",
     "prepack": "bun run build",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware src/ test/",
-    "lint:fix": "oxlint --fix",
+    "lint:fix": "oxlint --fix src/ test/",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:docs": "prettier --write \"docs/**/*.md\" \"./*.md\"",

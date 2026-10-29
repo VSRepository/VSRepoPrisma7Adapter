@@ -24,7 +24,7 @@ import { parsePrismaInclude } from "./parsers/include.parser.js";
 import { parsePrismaSelect } from "./parsers/select.parser.js";
 import { parsePrismaOrderBy } from "./parsers/order-by.parser.js";
 import { parsePrismaWriteData } from "./parsers/data.parser.js";
-import { mergeEntities } from "./resolvers/merge-entities.resolver.js";
+// import { mergeEntities } from "./resolvers/merge-entities.resolver.js";
 import { mapPrismaError } from "./resolvers/map-prisma-error.resolver.js";
 import { resolveProvider } from "./resolvers/resolve-provider.resolver.js";
 import { validatePrismaClient } from "./validators/validate-prisma-client.validator.js";
@@ -672,33 +672,33 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         }
     }
 
-    /**
-     * Fetches the record matching `where` and returns it merged with `obj`,
-     * WITHOUT persisting anything. Only the configured `relations` are merged;
-     * every other value is replaced. It's on the caller to decide what to do
-     * with the result (e.g. call `save` next).
-     */
-    async merge<K extends DeepPartial<T>>(
-        where: VSRepoWhere<T>,
-        obj: K,
-        options?: SimpleAdapterMethodOptions<T>,
-    ): Promise<(K & T) | null> {
-        const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
-            where: this.parseWhere(where),
-        };
+    // /**
+    //  * Fetches the record matching `where` and returns it merged with `obj`,
+    //  * WITHOUT persisting anything. Only the configured `relations` are merged;
+    //  * every other value is replaced. It's on the caller to decide what to do
+    //  * with the result (e.g. call `save` next).
+    //  */
+    // async merge<K extends DeepPartial<T>>(
+    //     where: VSRepoWhere<T>,
+    //     obj: K,
+    //     options?: SimpleAdapterMethodOptions<T>,
+    // ): Promise<(K & T) | null> {
+    //     const arg = {
+    //         ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+    //         where: this.parseWhere(where),
+    //     };
 
-        return this.execMethod(
-            async () => {
-                const result = await this.getPrismaRepository(options?.db).findFirst(arg);
-                if (!result) return null;
+    //     return this.execMethod(
+    //         async () => {
+    //             const result = await this.getPrismaRepository(options?.db).findFirst(arg);
+    //             if (!result) return null;
 
-                return mergeEntities(result, obj as PlainObject, this.relations) as K & T;
-            },
-            "merge",
-            arg,
-        );
-    }
+    //             return mergeEntities(result, obj as PlainObject, this.relations) as K & T;
+    //         },
+    //         "merge",
+    //         arg,
+    //     );
+    // }
 
     /** Creates a record if none matches `where`, otherwise updates it. */
     async upsert(

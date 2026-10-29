@@ -16,7 +16,7 @@ export interface Prisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Pri
     /** Name of the entity's primary key field (e.g. `"id"`). */
     pkName: keyof T;
     /**
-     * The entity's relation configuration, needed by the `create`/`update`/`merge`
+     * The entity's relation configuration, needed by the `create`/`update`
      * parsers to correctly resolve relation fields (see `Relation`/`AdapterRelations`).
      * Optional: without it, relation fields are passed through to Prisma as-is (raw).
      */

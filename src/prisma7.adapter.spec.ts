@@ -343,7 +343,7 @@ describe("VSRepoPrisma7Adapter", () => {
                 ["findOneOrThrow", (a: any) => a.findOneOrThrow(where)],
                 ["count", (a: any) => a.count(where)],
                 ["exists", (a: any) => a.exists(where)],
-                ["merge", (a: any) => a.merge(where, { name: "x" })],
+                // ["merge", (a: any) => a.merge(where, { name: "x" })],
                 ["update", (a: any) => a.update(where, { name: "x" })],
                 ["updateMany", (a: any) => a.updateMany(where, { name: "x" })],
                 ["updateManyReturning", (a: any) => a.updateManyReturning(where, { name: "x" })],
@@ -1068,58 +1068,58 @@ describe("VSRepoPrisma7Adapter", () => {
         });
     });
 
-    describe("merge", () => {
-        it("should return null when the record is not found", async () => {
-            const { adapter, user } = setup();
-            user.findFirst!.mockResolvedValue(null);
+    // describe("merge", () => {
+    //     it("should return null when the record is not found", async () => {
+    //         const { adapter, user } = setup();
+    //         user.findFirst!.mockResolvedValue(null);
 
-            await expect(adapter.merge({ id: "1" }, { name: "Jane" })).resolves.toBeNull();
-        });
+    //         await expect(adapter.merge({ id: "1" }, { name: "Jane" })).resolves.toBeNull();
+    //     });
 
-        it("should fetch the record and merge it with obj without persisting", async () => {
-            const { adapter, user } = setup();
-            user.findFirst!.mockResolvedValue({ id: "1", name: "John", age: 30 });
+    //     it("should fetch the record and merge it with obj without persisting", async () => {
+    //         const { adapter, user } = setup();
+    //         user.findFirst!.mockResolvedValue({ id: "1", name: "John", age: 30 });
 
-            const result = await adapter.merge({ id: "1" }, { name: "Jane" });
+    //         const result = await adapter.merge({ id: "1" }, { name: "Jane" });
 
-            expect(result).toEqual({ id: "1", name: "Jane", age: 30 });
-            expect(user.findFirst).toHaveBeenCalledWith({ where: { id: "1" } });
-            expect(user.update).not.toHaveBeenCalled();
-            expect(user.upsert).not.toHaveBeenCalled();
-        });
+    //         expect(result).toEqual({ id: "1", name: "Jane", age: 30 });
+    //         expect(user.findFirst).toHaveBeenCalledWith({ where: { id: "1" } });
+    //         expect(user.update).not.toHaveBeenCalled();
+    //         expect(user.upsert).not.toHaveBeenCalled();
+    //     });
 
-        it("should merge only the configured relations", async () => {
-            const { adapter, user } = setup({ relations: relationsConfig });
-            user.findFirst!.mockResolvedValue({
-                id: "1",
-                address: { id: "10", street: "Rua A" },
-                posts: [{ id: "1", title: "A" }],
-            });
+    //     it("should merge only the configured relations", async () => {
+    //         const { adapter, user } = setup({ relations: relationsConfig });
+    //         user.findFirst!.mockResolvedValue({
+    //             id: "1",
+    //             address: { id: "10", street: "Rua A" },
+    //             posts: [{ id: "1", title: "A" }],
+    //         });
 
-            const result = await adapter.merge({ id: "1" }, {
-                address: { street: "Rua B" },
-                posts: [{ id: "2", title: "B" }],
-            } as any);
+    //         const result = await adapter.merge({ id: "1" }, {
+    //             address: { street: "Rua B" },
+    //             posts: [{ id: "2", title: "B" }],
+    //         } as any);
 
-            expect(result).toEqual({
-                id: "1",
-                address: { id: "10", street: "Rua B" },
-                posts: [
-                    { id: "1", title: "A" },
-                    { id: "2", title: "B" },
-                ],
-            });
-        });
+    //         expect(result).toEqual({
+    //             id: "1",
+    //             address: { id: "10", street: "Rua B" },
+    //             posts: [
+    //                 { id: "1", title: "A" },
+    //                 { id: "2", title: "B" },
+    //             ],
+    //         });
+    //     });
 
-        it("should apply the read options when fetching", async () => {
-            const { adapter, user } = setup();
-            user.findFirst!.mockResolvedValue({ id: "1" });
+    //     it("should apply the read options when fetching", async () => {
+    //         const { adapter, user } = setup();
+    //         user.findFirst!.mockResolvedValue({ id: "1" });
 
-            await adapter.merge({ id: "1" }, { name: "Jane" }, { relations: { posts: true } } as any);
+    //         await adapter.merge({ id: "1" }, { name: "Jane" }, { relations: { posts: true } } as any);
 
-            expect(user.findFirst).toHaveBeenCalledWith({ where: { id: "1" }, include: { posts: true } });
-        });
-    });
+    //         expect(user.findFirst).toHaveBeenCalledWith({ where: { id: "1" }, include: { posts: true } });
+    //     });
+    // });
 
     describe("query", () => {
         it("should run a non-modifying query through $queryRawUnsafe", async () => {
