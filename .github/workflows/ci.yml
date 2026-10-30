@@ -69,6 +69,7 @@ jobs:
     integration:
         name: Integration (PostgreSQL, MySQL, SQLite)
         runs-on: ubuntu-latest
+        needs: [lint, test]
         timeout-minutes: 15
 
         services:
@@ -144,6 +145,7 @@ jobs:
     integration-sqlserver:
         name: Integration (SQL Server)
         runs-on: ubuntu-latest
+        needs: [lint, test]
         timeout-minutes: 20
         # TODO: this job has never run against a real SQL Server yet. Remove `continue-on-error`
         # once it has been green a couple of times, so that it becomes a blocking check.
@@ -204,6 +206,7 @@ jobs:
     integration-cockroachdb:
         name: Integration (CockroachDB)
         runs-on: ubuntu-latest
+        needs: [lint, test]
         timeout-minutes: 15
 
         env:
