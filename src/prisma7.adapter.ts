@@ -18,7 +18,7 @@ import {
     VSRepoWhere,
     WithIgnoreConflicts,
 } from "vsrepo";
-import { RETURNING_MANY_PROVIDERS } from "./constants/provider-capabilities.constant.js";
+import { RETURNING_MANY_PROVIDERS, SKIP_DUPLICATES_PROVIDERS } from "./constants/provider-capabilities.constant.js";
 import { parsePrismaWhere } from "./parsers/where.parser.js";
 import { parsePrismaInclude } from "./parsers/include.parser.js";
 import { parsePrismaSelect } from "./parsers/select.parser.js";
@@ -107,6 +107,21 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         throw new VSRepoAdapterError(
             `'${methodName}' is not supported by the '${this.provider}' provider, since Prisma only provides ` +
                 `createManyAndReturn/updateManyAndReturn on PostgreSQL, CockroachDB and SQLite.`,
+            AdapterErrorCode.NOT_SUPPORTED,
+            null,
+        );
+    }
+
+    /**
+     * `ignoreConflicts` is translated to Prisma's `skipDuplicates`, which isn't available on
+     * SQL Server and SQLite. Rejects with `NOT_SUPPORTED` instead of leaving it to Prisma.
+     */
+    private assertIgnoreConflictsSupported(methodName: string, ignoreConflicts: boolean | undefined): void {
+        if (!ignoreConflicts || SKIP_DUPLICATES_PROVIDERS.has(this.provider)) return;
+
+        throw new VSRepoAdapterError(
+            `The 'ignoreConflicts' option of '${methodName}' is not supported by the '${this.provider}' provider, since Prisma only ` +
+                `supports skipDuplicates on PostgreSQL, MySQL and CockroachDB. Remove 'ignoreConflicts' to run it without skipping conflicts.`,
             AdapterErrorCode.NOT_SUPPORTED,
             null,
         );
@@ -611,11 +626,16 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /**
      * Creates multiple records in a single operation.
+     *
+     * Rejects with `NOT_SUPPORTED` when `ignoreConflicts` is used on a provider without
+     * `skipDuplicates` (SQL Server and SQLite).
      */
     async createMany(
         objs: DeepPartial<T>[],
         options?: WithIgnoreConflicts<RestrictAdapterMethodOptions<T>>,
     ): Promise<CountResult> {
+        this.assertIgnoreConflictsSupported("createMany", options?.ignoreConflicts);
+
         const data = objs.map(obj => this.stripRelationFields(obj as PlainObject));
         const arg = { data, skipDuplicates: options?.ignoreConflicts };
 
@@ -625,7 +645,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /**
      * Creates multiple records in a single operation, returning the created records.
      *
-     * Rejects with `NOT_SUPPORTED` on providers without `createManyAndReturn` (MySQL and SQL Server).
+     * Rejects with `NOT_SUPPORTED` on providers without `createManyAndReturn` (MySQL and SQL Server),
+     * and when `ignoreConflicts` is used on a provider without `skipDuplicates` (SQL Server and SQLite).
      */
     async createManyReturning(
         objs: DeepPartial<T>[],
@@ -635,6 +656,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
         try {
             this.assertReturningManySupported("createManyReturning");
+            this.assertIgnoreConflictsSupported("createManyReturning", options?.ignoreConflicts);
 
             const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
             const arg = {

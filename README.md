@@ -232,7 +232,7 @@ const mostExpensive = await productRepository.max("price");
 
 ## Provider-specific limitations
 
-Some features this adapter relies on aren't available on every database provider. The adapter checks the first two below upfront and throws a `VSRepoAdapterError` (code `NOT_SUPPORTED`) before touching the database; the third is left to Prisma, which throws its own validation error.
+Some features this adapter relies on aren't available on every database provider. The adapter checks every feature below upfront and throws a `VSRepoAdapterError` (code `NOT_SUPPORTED`) before touching the database.
 
 | Feature | Supported providers | Not supported |
 | --- | --- | --- |

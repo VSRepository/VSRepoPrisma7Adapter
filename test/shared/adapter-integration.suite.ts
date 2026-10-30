@@ -544,12 +544,13 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     await expect(prisma.user.count({ where: { email: "c@mail.com" } })).resolves.toBe(1);
                 });
             } else {
-                it("should reject ignoreConflicts with a VSRepoAdapterError (skipDuplicates is unsupported)", async () => {
+                it("should reject ignoreConflicts with NOT_SUPPORTED (skipDuplicates is unsupported)", async () => {
                     const error = await users
                         .createMany([{ email: "a@mail.com" }], { ignoreConflicts: true })
                         .catch(e => e);
 
                     expect(error).toBeInstanceOf(VSRepoAdapterError);
+                    expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
                     await expect(prisma.user.count()).resolves.toBe(0);
                 });
             }

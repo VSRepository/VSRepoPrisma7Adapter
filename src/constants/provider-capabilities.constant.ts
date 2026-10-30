@@ -18,3 +18,14 @@ export const RETURNING_MANY_PROVIDERS: ReadonlySet<PrismaProvider> = new Set<Pri
     "cockroachdb",
     "sqlite",
 ]);
+
+/**
+ * Providers that support Prisma's `skipDuplicates` (`INSERT ... ON CONFLICT DO NOTHING`
+ * or equivalent), which is what `ignoreConflicts` is translated to on `createMany` and
+ * `createManyReturning`.
+ */
+export const SKIP_DUPLICATES_PROVIDERS: ReadonlySet<PrismaProvider> = new Set<PrismaProvider>([
+    "postgresql",
+    "mysql",
+    "cockroachdb",
+]);

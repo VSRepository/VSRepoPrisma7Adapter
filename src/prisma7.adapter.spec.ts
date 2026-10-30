@@ -794,6 +794,44 @@ describe("VSRepoPrisma7Adapter", () => {
             expect(user.createMany!.mock.calls[0]![0].skipDuplicates).toBeUndefined();
         });
 
+        it.each(["postgresql", "mysql", "cockroachdb"] as const)(
+            "should accept ignoreConflicts on %s",
+            async provider => {
+                const { adapter, user } = setup({ provider });
+                user.createMany!.mockResolvedValue({ count: 1 });
+
+                await adapter.createMany([{ name: "A" }], { ignoreConflicts: true });
+
+                expect(user.createMany).toHaveBeenCalledWith({ data: [{ name: "A" }], skipDuplicates: true });
+            },
+        );
+
+        it.each(["sqlite", "sqlserver"] as const)(
+            "should reject ignoreConflicts with NOT_SUPPORTED on %s before touching the database",
+            async provider => {
+                const { adapter, user } = setup({ provider });
+
+                const error = await adapter.createMany([{ name: "A" }], { ignoreConflicts: true }).catch(e => e);
+
+                expect(error).toBeInstanceOf(VSRepoAdapterError);
+                expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
+                expect(error.message).toContain("createMany");
+                expect(error.message).toContain("ignoreConflicts");
+                expect(error.message).toContain(provider);
+                expect(user.createMany).not.toHaveBeenCalled();
+            },
+        );
+
+        it.each(["sqlite", "sqlserver"] as const)(
+            "should still run createMany on %s when ignoreConflicts is not used",
+            async provider => {
+                const { adapter, user } = setup({ provider });
+                user.createMany!.mockResolvedValue({ count: 1 });
+
+                await expect(adapter.createMany([{ name: "A" }])).resolves.toEqual({ count: 1 });
+            },
+        );
+
         it("should reject with NOT_SUPPORTED when a record has a configured relation field", async () => {
             const { adapter, user } = setup({ relations: relationsConfig });
 
@@ -833,6 +871,21 @@ describe("VSRepoPrisma7Adapter", () => {
                 where: { id: { in: ["1", "2"] } },
                 select: { id: true, name: true },
             });
+        });
+
+        it("should reject ignoreConflicts with NOT_SUPPORTED on sqlite before touching the database", async () => {
+            const { adapter, prisma, user, txUser } = setup({ provider: "sqlite" });
+
+            const error = await adapter.createManyReturning([{ name: "A" }], { ignoreConflicts: true }).catch(e => e);
+
+            expect(error).toBeInstanceOf(VSRepoAdapterError);
+            expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
+            expect(error.message).toContain("createManyReturning");
+            expect(error.message).toContain("ignoreConflicts");
+            expect(error.message).toContain("sqlite");
+            expect(prisma.$transaction).not.toHaveBeenCalled();
+            expect(user.createManyAndReturn).not.toHaveBeenCalled();
+            expect(txUser.createManyAndReturn).not.toHaveBeenCalled();
         });
 
         it("should pass the read options only to the final re-read", async () => {

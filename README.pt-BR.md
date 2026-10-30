@@ -232,7 +232,7 @@ const mostExpensive = await productRepository.max("price");
 
 ## Limitações por provider
 
-Alguns recursos que esse adapter usa não estão disponíveis em todo banco. O adapter checa os dois primeiros abaixo antecipadamente e lança um `VSRepoAdapterError` (code `NOT_SUPPORTED`) antes de tocar no banco; o terceiro fica por conta do Prisma, que lança o próprio erro de validação.
+Alguns recursos que esse adapter usa não estão disponíveis em todo banco. O adapter checa todos os recursos abaixo antecipadamente e lança um `VSRepoAdapterError` (code `NOT_SUPPORTED`) antes de tocar no banco.
 
 | Recurso | Providers com suporte | Sem suporte |
 | --- | --- | --- |
