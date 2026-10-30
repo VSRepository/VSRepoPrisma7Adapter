@@ -5,20 +5,73 @@ on:
         branches: [main]
     pull_request:
         branches: [main]
-    workflow_dispatch:
+    # Lets `publish.yml` run the whole pipeline before publishing a tag.
+    workflow_call:
 
-# Evita rodar duas vezes o mesmo PR quando novos commits chegam.
+permissions:
+    contents: read
+
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
 jobs:
-    test:
-        name: Test
+    lint:
+        name: Lint
         runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v7
 
-        # Postgres real: os testes de `tests/prisma7.adapter.test.ts` rodam
-        # contra ele (não são mocks) — ver `tests/helpers/db.ts`.
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Generate Prisma Clients
+              run: bun run prisma:generate
+
+            - name: Type Check
+              run: bun run typecheck
+
+            - name: Lint
+              run: bun run lint
+
+            - name: Format Check
+              run: bun run format:check
+
+    test:
+        name: Tests (Node ${{ matrix.node-version }})
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                node-version: [22, 24, 26]
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: ${{ matrix.node-version }}
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Run tests on Node ${{ matrix.node-version }}
+              run: npm test
+
+    integration:
+        name: Integration (PostgreSQL, MySQL, SQLite)
+        runs-on: ubuntu-latest
+        needs: [lint, test]
+        timeout-minutes: 15
+
         services:
             postgres:
                 image: postgres:16
@@ -34,30 +87,191 @@ jobs:
                     --health-timeout 5s
                     --health-retries 10
 
+            mysql:
+                image: mysql:8.4
+                env:
+                    MYSQL_ROOT_PASSWORD: root
+                    MYSQL_DATABASE: vsrepo_test
+                    MYSQL_USER: vsrepo
+                    MYSQL_PASSWORD: vsrepo
+                ports:
+                    - 3306:3306
+                options: >-
+                    --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 20
+
         env:
-            DATABASE_URL: postgresql://vsrepo:vsrepo@localhost:5432/vsrepo_test?schema=public
+            POSTGRES_URL: postgresql://vsrepo:vsrepo@localhost:5432/vsrepo_test
+            MYSQL_URL: mysql://vsrepo:vsrepo@localhost:3306/vsrepo_test
+            MYSQL_HOST: localhost
+            MYSQL_PORT: "3306"
+            MYSQL_USER: vsrepo
+            MYSQL_PASSWORD: vsrepo
+            MYSQL_NAME: vsrepo_test
 
         steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+            - uses: actions/checkout@v7
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
               with:
                   node-version: 22
-                  cache: npm
 
             - name: Install dependencies
-              run: npm ci
+              run: bun install --frozen-lockfile
+
+            - name: Generate Prisma Clients
+              run: |
+                  bun run prisma:generate:postgres
+                  bun run prisma:generate:mysql
+                  bun run prisma:generate:sqlite
 
             - name: Apply database migrations
-              run: npx prisma migrate deploy
+              run: |
+                  bunx prisma migrate deploy --config prisma/postgres/prisma.config.ts
+                  bunx prisma migrate deploy --config prisma/mysql/prisma.config.ts
+                  bunx prisma migrate deploy --config prisma/sqlite/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration test/postgres test/mysql test/sqlite
+
+    # SQL Server is isolated: its image is heavy and slow to start, so it must not delay (or break)
+    # the other databases.
+    integration-sqlserver:
+        name: Integration (SQL Server)
+        runs-on: ubuntu-latest
+        needs: [lint, test]
+        timeout-minutes: 20
+        # TODO: this job has never run against a real SQL Server yet. Remove `continue-on-error`
+        # once it has been green a couple of times, so that it becomes a blocking check.
+        continue-on-error: true
+
+        services:
+            sqlserver:
+                image: mcr.microsoft.com/mssql/server:2022-latest
+                env:
+                    ACCEPT_EULA: "Y"
+                    MSSQL_SA_PASSWORD: Vsrepo_Test1
+                ports:
+                    - 1433:1433
+                options: >-
+                    --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P $MSSQL_SA_PASSWORD -Q 'SELECT 1'"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 20
+                    --health-start-period 20s
+
+        env:
+            SQLSERVER_URL: sqlserver://localhost:1433;database=vsrepo_test;user=sa;password=Vsrepo_Test1;trustServerCertificate=true
+            SQLSERVER_HOST: localhost
+            SQLSERVER_USER: sa
+            SQLSERVER_PASSWORD: Vsrepo_Test1
+            SQLSERVER_NAME: vsrepo_test
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
 
             - name: Generate Prisma Client
-              run: npx prisma generate
+              run: bun run prisma:generate:sqlserver
 
-            - name: Run tests
-              run: npm test
+            # The container does not create the database by itself.
+            - name: Create database
+              run: |
+                  docker exec "$(docker ps -q --filter ancestor=mcr.microsoft.com/mssql/server:2022-latest)" \
+                    /opt/mssql-tools18/bin/sqlcmd -b -C -S localhost -U sa -P "$SQLSERVER_PASSWORD" \
+                    -Q "CREATE DATABASE $SQLSERVER_NAME"
 
-            - name: Type-check tests
-              run: npm run test:types
+            - name: Apply database migrations
+              run: bunx prisma migrate deploy --config prisma/sqlserver/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration:sqlserver
+
+    integration-cockroachdb:
+        name: Integration (CockroachDB)
+        runs-on: ubuntu-latest
+        needs: [lint, test]
+        timeout-minutes: 15
+
+        env:
+            COCKROACHDB_URL: postgresql://root@localhost:26257/adapter_db?sslmode=disable
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - uses: actions/setup-node@v7
+              with:
+                  node-version: 22
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            # The image needs `start-single-node`, which service containers cannot receive.
+            - name: Start CockroachDB
+              run: |
+                  docker run -d --name cockroach -p 26257:26257 \
+                    cockroachdb/cockroach:v26.3.3 start-single-node --insecure
+
+            - name: Wait for CockroachDB and prepare the database
+              run: |
+                  for i in $(seq 1 30); do
+                    docker exec cockroach ./cockroach sql --insecure -e "SELECT 1" && break
+                    echo "Waiting for CockroachDB ($i/30)..."
+                    sleep 2
+                  done
+                  docker exec cockroach ./cockroach sql --insecure \
+                    -e "SET CLUSTER SETTING sql.defaults.create_table_with_schema_locked = false" \
+                    -e "CREATE DATABASE adapter_db"
+
+            - name: Generate Prisma Client
+              run: bun run prisma:generate:cockroachdb
+
+            - name: Apply database migrations
+              run: bunx prisma migrate deploy --config prisma/cockroachdb/prisma.config.ts
+
+            - name: Run integration tests
+              run: bun run test:integration:cockroachdb
+
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+        needs: [lint, test, integration, integration-sqlserver, integration-cockroachdb]
+        steps:
+            - uses: actions/checkout@v7
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install dependencies
+              run: bun install --frozen-lockfile
+
+            - name: Build
+              run: bun run build
+
+            - name: Upload build artifact
+              uses: actions/upload-artifact@v7
+              with:
+                  name: dist
+                  path: dist/
+                  retention-days: 3

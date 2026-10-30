@@ -3,13 +3,11 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    // As declaracoes de tipo sao geradas automaticamente pelo tsc a partir do `src/`.
     "declaration": true,
     "declarationMap": false,
-    "sourceMap": true,
+    "sourceMap": false,
     "stripInternal": true
   },
-  // Apenas o nucleo do adaptador (src/) e empacotado. Scripts de exemplo e os
-  // testes ficam fora do build do pacote.
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
 }

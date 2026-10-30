@@ -1,4 +1,4 @@
-import { PrismaArgLike } from "./prisma-arg-like.type";
+import { PrismaArgLike } from "./prisma-arg-like.type.js";
 
 type AnyFn = (arg: PrismaArgLike) => Promise<any>;
 /** `count` do Prisma resolve pra um `number` (na forma simples, sem `select` de agregação). */

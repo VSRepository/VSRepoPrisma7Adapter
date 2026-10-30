@@ -1,78 +1,38 @@
-/**
- * Parser que converte um `VSRepoWhere<T>` (formato "amigável" da aplicação)
- * em um `where` válido de qualquer modelo do Prisma.
- *
- * Suporta:
- *  - Valor direto:               { name: "Ana" }
- *  - Operadores de campo:        { age: { gte: 18, lte: 65 } }
- *  - `between`:                  { age: { between: [18, 65] } } -> { gte: 18, lte: 65 }
- *  - `not` (valor ou operador):  { name: { not: "Ana" } }
- *                                { name: { not: { contains: "an" } } }
- *  - Strings case-insensitive:   { name: { contains: "ana", ignoreCase: true } }
- *                                -> { contains: "ana", mode: "insensitive" }
- *  - Relação lista (array):      { posts: { _some: { title: "x" } } } -> { posts: { some: {...} } }
- *  - Relação objeto (to-one):    { author: { _with: { id: 1 } } }    -> { author: { is: {...} } }
- *                                { author: { _without: { id: 1 } } } -> { author: { isNot: {...} } }
- *  - Lógicos no nível raiz:      { AND: [...] , OR: [...], NOT: {...} }
- *
- * Reflete a tipagem atual: `AND`/`OR`/`NOT` só existem em `VSRepoWhere<T>`
- * (nível raiz). Dentro de relações (`_some`/`_every`/`_none`/`_with`/
- * `_without`), o tipo usado é `VSRepoWherePlain<U>`, que NÃO tem esses
- * operadores lógicos — por isso a recursão para relações usa
- * `parsePlainWhere`, e não `parseWhere`.
- */
-
-import { VSRepoWhere } from "vsrepo";
-import { PlainObject } from "../types/plain-object.type";
-import { isDecimal } from "../validators/is-decimal.validator";
-import { isPlainObject } from "../validators/is-plain-object.validator";
-
-/** Chaves reconhecidas como operadores de campo do VSRepoFieldOperators */
-const FIELD_OPERATOR_KEYS = new Set([
-    "equals",
-    "not",
-    "in",
-    "notIn",
-    "gt",
-    "gte",
-    "lt",
-    "lte",
-    "between",
-    "contains",
-    "startsWith",
-    "endsWith",
-    "ignoreCase",
-]);
+import { AdapterErrorCode, VSRepoAdapterError, VSRepoWhere } from "vsrepo";
+import { INSENSITIVE_MODE_PROVIDERS } from "../constants/provider-capabilities.constant.js";
+import { PlainObject } from "../types/plain-object.type.js";
+import { PrismaProvider } from "../types/prisma-provider.type.js";
+import { isPlainObject } from "../validators/is-plain-object.validator.js";
 
 const LOGICAL_KEYS = new Set(["AND", "OR", "NOT"]);
 
-/** Verifica se um objeto "parece" um VSRepoFieldOperators (e não um filtro de relação/nested where) */
-function isFieldOperatorObject(value: PlainObject): boolean {
-    return Object.keys(value).some(key => FIELD_OPERATOR_KEYS.has(key));
-}
+function parseFieldValue(value: unknown, provider?: PrismaProvider): unknown {
+    if (!isPlainObject(value)) {
+        return value;
+    }
 
-function isArrayRelationFilter(value: PlainObject): boolean {
-    return "_some" in value || "_every" in value || "_none" in value;
-}
-
-function isObjectRelationFilter(value: PlainObject): boolean {
-    return "_with" in value || "_without" in value;
-}
-
-/**
- * Converte um VSRepoFieldOperators<V> em um filtro de campo do Prisma.
- */
-function parseFieldOperators(value: PlainObject): PlainObject {
     const result: PlainObject = {};
-    const ignoreCase = value.ignoreCase === true;
 
     for (const [key, val] of Object.entries(value)) {
         if (val === undefined) continue;
 
         switch (key) {
-            case "ignoreCase":
-                // tratado à parte, no final (vira `mode`)
+            case "ignoreCase": {
+                if (val !== true) break;
+
+                if (provider && !INSENSITIVE_MODE_PROVIDERS.has(provider)) {
+                    throw new VSRepoAdapterError(
+                        `The 'ignoreCase' option is not supported by the '${provider}' provider, since Prisma only ` +
+                            `supports case-insensitive filtering on PostgreSQL and CockroachDB. ` +
+                            `Remove 'ignoreCase' to filter using the database's own collation rules.`,
+                        AdapterErrorCode.NOT_SUPPORTED,
+                        null,
+                    );
+                }
+
+                result.mode = "insensitive";
                 break;
+            }
 
             case "between": {
                 const [min, max] = val as [any, any];
@@ -82,11 +42,42 @@ function parseFieldOperators(value: PlainObject): PlainObject {
             }
 
             case "not": {
-                result.not =
-                    isPlainObject(val) && isFieldOperatorObject(val)
-                        ? parseFieldOperators(val)
-                        : val;
+                result.not = isPlainObject(val) ? parseFieldValue(val, provider) : val;
                 break;
+            }
+
+            case "_some": {
+                result.some = parsePrismaWhere(value._some as VSRepoWhere<unknown>, provider);
+                break;
+            }
+
+            case "_every": {
+                result.every = parsePrismaWhere(value._every as VSRepoWhere<unknown>, provider);
+                break;
+            }
+
+            case "_none": {
+                result.none = parsePrismaWhere(value._none as VSRepoWhere<unknown>, provider);
+                break;
+            }
+
+            case "_with": {
+                result.is = parsePrismaWhere(value._with as VSRepoWhere<unknown>, provider);
+                break;
+            }
+
+            case "_without": {
+                result.isNot = parsePrismaWhere(value._without as VSRepoWhere<unknown>, provider);
+                break;
+            }
+
+            case "like": {
+                throw new VSRepoAdapterError(
+                    `The 'like' operator is not supported by the Prisma adapter, since Prisma has no equivalent. ` +
+                        `Use 'contains', 'startsWith' or 'endsWith' instead.`,
+                    AdapterErrorCode.NOT_SUPPORTED,
+                    null,
+                );
             }
 
             default:
@@ -94,98 +85,17 @@ function parseFieldOperators(value: PlainObject): PlainObject {
         }
     }
 
-    if (ignoreCase) {
-        // * Simplismente aplica o "insensitive" se o ignoreCase for true, se for em um campo inválido o proprio Prisma lança erro
-        result.mode = "insensitive";
-    }
-
-    return result;
-}
-
-/** Converte { _some, _every, _none } em { some, every, none } (VSRepoWherePlain — sem AND/OR/NOT) */
-function parseArrayRelationFilter(value: PlainObject): PlainObject {
-    const result: PlainObject = {};
-
-    if (value._some !== undefined) {
-        result.some = parsePlainWhere(value._some);
-    }
-    if (value._every !== undefined) {
-        result.every = parsePlainWhere(value._every);
-    }
-    if (value._none !== undefined) {
-        result.none = parsePlainWhere(value._none);
-    }
-
-    return result;
-}
-
-/** Converte { _with, _without } em { is, isNot } (VSRepoWherePlain — sem AND/OR/NOT) */
-function parseObjectRelationFilter(value: PlainObject): PlainObject {
-    const result: PlainObject = {};
-
-    if (value._with !== undefined) {
-        result.is = parsePlainWhere(value._with);
-    }
-    if (value._without !== undefined) {
-        result.isNot = parsePlainWhere(value._without);
-    }
-
-    return result;
-}
-
-/** Decide como interpretar o valor de um campo do where */
-function parseFieldValue(value: unknown): unknown {
-    // valores primitivos (string, number, boolean, Date, null, bigint, Decimal) passam direto
-    if (value === null || typeof value !== "object" || value instanceof Date || isDecimal(value)) {
-        return value;
-    }
-
-    // arrays (usados em `in`/`notIn` no nível mais alto, ex: { status: ["A","B"] })
-    if (Array.isArray(value)) {
-        return value;
-    }
-
-    const obj = value as PlainObject;
-
-    if (isArrayRelationFilter(obj)) {
-        return parseArrayRelationFilter(obj);
-    }
-
-    if (isObjectRelationFilter(obj)) {
-        return parseObjectRelationFilter(obj);
-    }
-
-    if (isFieldOperatorObject(obj)) {
-        return parseFieldOperators(obj);
-    }
-
-    // fallback: nested where (não deveria ocorrer para campos primitivos bem tipados)
-    return parsePlainWhere(obj);
-}
-
-/**
- * Converte um `VSRepoWherePlain<T>` (sem AND/OR/NOT) — usado para o corpo de
- * relações (`_some`/`_every`/`_none`/`_with`/`_without`).
- */
-function parsePlainWhere(where: PlainObject | undefined | null): PlainObject | undefined {
-    if (where === undefined || where === null) return undefined;
-
-    const result: PlainObject = {};
-
-    for (const [key, value] of Object.entries(where)) {
-        if (value === undefined) continue;
-        result[key] = parseFieldValue(value);
-    }
-
     return result;
 }
 
 /**
- * Converte um `VSRepoWhere<T>` completo (nível raiz, com AND/OR/NOT) em um
- * where do Prisma.
+ * Converts a `VSRepoWhere` into a Prisma `where`.
  */
-function parseWhere(where: PlainObject | undefined | null): PlainObject | undefined {
-    if (where === undefined || where === null) return undefined;
+export function parsePrismaWhere<T>(
+    where: VSRepoWhere<T> | undefined,
+    provider?: PrismaProvider,
+): PlainObject | undefined {
+    if (where === undefined) return undefined;
 
     const result: PlainObject = {};
 
@@ -193,22 +103,14 @@ function parseWhere(where: PlainObject | undefined | null): PlainObject | undefi
         if (value === undefined) continue;
 
         if (LOGICAL_KEYS.has(key)) {
-            result[key] = Array.isArray(value) ? value.map(v => parseWhere(v)) : parseWhere(value);
+            result[key] = Array.isArray(value)
+                ? value.map(v => parsePrismaWhere(v, provider))
+                : parsePrismaWhere(value, provider);
             continue;
         }
 
-        result[key] = parseFieldValue(value);
+        result[key] = parseFieldValue(value, provider);
     }
 
     return result;
-}
-
-/**
- * Use o segundo generic para tipar o retorno com o `WhereInput`
- * do Prisma correspondente ao modelo, ex:
- *
- *   parseVSRepoWhere<User, Prisma.UserWhereInput>(where)
- */
-export function parsePrismaWhere<T>(where: VSRepoWhere<T> | undefined): PlainObject | undefined {
-    return parseWhere(where);
 }

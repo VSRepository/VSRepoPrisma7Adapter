@@ -1,14 +1,40 @@
 {
   "name": "@vsrepo/prisma7-adapter",
-  "version": "1.3.2",
-  "description": "VSRepository adapter implementation backed by Prisma 7, translating every VSRepository operation into Prisma Client calls.",
-  "homepage": "https://github.com/jaobrabo123/VSRepoPrisma7Adapter#readme",
+  "version": "2.0.0-dev",
+  "author": {
+    "email": "joaodev.azevedo@outlook.com",
+    "url": "https://github.com/jaobrabo123",
+    "name": "João Pedro Azevedo Freire Mecenas"
+  },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jaobrabo123/VSRepoPrisma7Adapter.git"
+    "url": "git+https://github.com/VSRepository/VSRepoPrisma7Adapter.git"
   },
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "devDependencies": {
+    "@prisma/adapter-better-sqlite3": "^7.10.1",
+    "@prisma/adapter-mariadb": "^7.10.1",
+    "@prisma/adapter-mssql": "^7.10.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/mssql": "^12.3.0",
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "@vitest/coverage-v8": "^5.0.5",
+    "dotenv": "^17.4.2",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "pg": "^8.23.0",
+    "prettier": "^3.9.10",
+    "prisma": "^7.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  },
+  "peerDependencies": {
+    "@prisma/client": "^7.10.0",
+    "vsrepo": "^3.0.0-dev.2"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -16,24 +42,21 @@
       "require": "./dist/index.js"
     }
   },
-  "type": "commonjs",
+  "bugs": {
+    "email": "joaodev.azevedo@outlook.com",
+    "url": "https://github.com/VSRepository/VSRepoPrisma7Adapter/issues"
+  },
+  "description": "VSRepository adapter implementation backed by Prisma 7.",
+  "engines": {
+    "node": ">=22"
+  },
   "files": [
     "dist",
     "README.md",
-    "README.pt-BR.md"
+    "README.pt-BR.md",
+    "CHANGELOG.md"
   ],
-  "engines": {
-    "node": ">=18"
-  },
-  "scripts": {
-    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
-    "typecheck": "tsc --noEmit -p tsconfig.build.json",
-    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --watch",
-    "test:types": "tsc --noEmit -p tests/tsconfig.json"
-  },
+  "homepage": "https://github.com/VSRepository/VSRepoPrisma7Adapter#readme",
   "keywords": [
     "prisma",
     "prisma7",
@@ -45,47 +68,41 @@
     "vsrepository",
     "adapter"
   ],
-  "author": {
-    "email": "joaodev.azevedo@outlook.com",
-    "url": "https://github.com/jaobrabo123",
-    "name": "João Pedro Azevedo Freire Mecenas"
-  },
-  "bugs": {
-    "email": "joaodev.azevedo@outlook.com",
-    "url": "https://github.com/jaobrabo123/VSRepoPrisma7Adapter/issues"
-  },
   "license": "MIT",
-  "peerDependencies": {
-    "@prisma/client": "^7.10.0",
-    "vsrepo": "^2.7.2"
+  "scripts": {
+    "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
+    "build": "bun run clean && tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint --type-aware src/ test/",
+    "lint:fix": "oxlint --fix src/ test/",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:docs": "prettier --write \"docs/**/*.md\" \"./*.md\"",
+    "format:docs:check": "prettier --check \"docs/**/*.md\" \"./*.md\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:postgres": "vitest run --config vitest.integration.config.ts test/postgres",
+    "test:integration:mysql": "vitest run --config vitest.integration.config.ts test/mysql",
+    "test:integration:sqlite": "vitest run --config vitest.integration.config.ts test/sqlite",
+    "test:integration:sqlserver": "vitest run --config vitest.integration.config.ts test/sqlserver",
+    "test:integration:cockroachdb": "vitest run --config vitest.integration.config.ts test/cockroachdb",
+    "full-validation": "bun run typecheck && bun run lint && bun run format:check && bun run test",
+    "prisma:generate": "bun run prisma:generate:postgres && bun run prisma:generate:sqlserver && bun run prisma:generate:sqlite && bun run prisma:generate:mysql && bun run prisma:generate:cockroachdb",
+    "prisma:generate:postgres": "bunx prisma generate --config prisma/postgres/prisma.config.ts",
+    "prisma:generate:sqlserver": "bunx prisma generate --config prisma/sqlserver/prisma.config.ts",
+    "prisma:generate:mysql": "bunx prisma generate --config prisma/mysql/prisma.config.ts",
+    "prisma:generate:sqlite": "bunx prisma generate --config prisma/sqlite/prisma.config.ts",
+    "prisma:generate:cockroachdb": "bunx prisma generate --config prisma/cockroachdb/prisma.config.ts",
+    "prisma:migrate": "bun run prisma:migrate:postgres && bun run prisma:migrate:sqlserver && bun run prisma:migrate:sqlite && bun run prisma:migrate:mysql && bun run prisma:migrate:cockroachdb",
+    "prisma:migrate:postgres": "bunx prisma migrate dev --config prisma/postgres/prisma.config.ts",
+    "prisma:migrate:sqlserver": "bunx prisma migrate dev --config prisma/sqlserver/prisma.config.ts",
+    "prisma:migrate:mysql": "bunx prisma migrate dev --config prisma/mysql/prisma.config.ts",
+    "prisma:migrate:sqlite": "bunx prisma migrate dev --config prisma/sqlite/prisma.config.ts",
+    "prisma:migrate:cockroachdb": "bunx prisma migrate dev --config prisma/cockroachdb/prisma.config.ts"
   },
-  "dependencies": {
-    "deepmerge": "^4.3.1"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/plugin-proposal-decorators": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
-    "@babel/preset-typescript": "^7.29.7",
-    "@jest/globals": "^30.5.0",
-    "@prisma/adapter-pg": "^7.10.0",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^26.4.0",
-    "@types/pg": "^8.23.1",
-    "babel-jest": "^30.5.0",
-    "cross-env": "^10.1.0",
-    "dotenv": "^17.4.2",
-    "jest": "^30.5.0",
-    "pg": "^8.23.0",
-    "prisma": "^7.10.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
-  },
-  "allowScripts": {
-    "prisma@7.10.0": true,
-    "@parcel/watcher@2.6.0": true,
-    "unrs-resolver@1.12.2": true,
-    "@prisma/engines@7.10.0": true,
-    "esbuild@0.28.2": true
-  }
+  "type": "module",
+  "types": "./dist/index.d.ts"
 }

@@ -6,6 +6,80 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev] - 2026-10-29
+
+> Development version of the adapter for **VSRepository v3** (`vsrepo` `^3.0.0-dev.2`). The 1.x line keeps targeting VSRepository v2.
+
+### Breaking changes
+- **Now targets VSRepository v3** — the `vsrepo` peer dependency is `^3.0.0-dev.2` (was `^2.7.2`) and the adapter implements the new `VSRepoAdapter` contract. It is not compatible with VSRepository v2: stay on 1.x there
+- **ESM package, Node `>=22`** — the package is now `"type": "module"` (it was CommonJS) and `engines.node` went from `>=18` to `>=22`
+- **`tableName` renamed to `modelName`** in the constructor config
+- **`VSRepoPrisma7AdapterConfig` renamed to `Prisma7AdapterConfig`** — the adapter class is still exported as both `VSRepoPrisma7Adapter` and `Prisma7Adapter`
+- **`merge` removed** — it was discontinued from the `VSRepoAdapter` contract (`VSRepository` now merges in memory by itself, on top of the adapter's `findOne`). The constructor `relations` config now only drives `create`/`update`/`upsert`/`save`
+- **`logSlowThresholdMs` removed** from the constructor config
+- **The constructor config is no longer validated at runtime** — the `INVALID_ADAPTER_CONFIG` errors for `tableName`/`pkName`/`relations`/`logLevel`/`provider` are gone, so those fields are now checked by TypeScript only. The constructor still validates the Prisma client and the model, with `MISSING_DB_CLIENT` (client is `null`/`undefined`) and `MODEL_NOT_FOUND` (no `prisma[modelName]` delegate)
+- **The provider is resolved in the constructor** — when it can't be detected and no `provider` was set, construction throws a `VSRepoAdapterError` (`NOT_SUPPORTED`) asking for `provider`. Before, construction never threw and only `getPlaceholder` threw, when called
+- **What the provider can't run now throws `NOT_SUPPORTED` upfront**, instead of being left to Prisma: `ignoreCase` outside PostgreSQL/CockroachDB, `createManyReturning`/`updateManyReturning` on MySQL and SQL Server, and `ignoreConflicts` (Prisma's `skipDuplicates`) on `createMany`/`createManyReturning` on SQL Server and SQLite. The `like` operator also throws `NOT_SUPPORTED` on every provider (use `contains`/`startsWith`/`endsWith`)
+
+### Added
+- **`incrementMany`, `decrementMany`, `multiplyMany` and `divideMany`** — the multi-record counterparts of the `*One` atomic methods: they apply the operation, server-side, to every record matching `where` through Prisma's `updateMany` (`{ field: { increment | decrement | multiply | divide: value } }`) and return a `CountResult`
+- **Integration tests against real databases** — PostgreSQL, MySQL, SQLite, SQL Server and CockroachDB share one suite (`test/shared`) and run in CI, each provider with its own Prisma schema, migrations and config under `prisma/<provider>`. Run them with `test:integration` or `test:integration:<provider>`
+- **Unit tests** for the adapter and for the parsers, resolvers and validators (colocated `*.spec.ts` files)
+- **Publish workflow** — pushing a `v*` tag runs the whole CI (lint, unit tests, integration tests, build) and then publishes; pre-release tags publish under their pre-release dist-tag (`2.0.0-dev` → `dev`)
+
+### Changed
+- `where` is now optional on `findOne`, `findOneOrThrow`, `findMany`, `count` and `exists`
+- `count` only forwards `where` to Prisma, and every method now forwards only the read options its typing accepts (`select`, `relations`, `order`, `pagination`)
+- `createManyReturning` and `updateManyReturning` now run a **single** query (`createManyAndReturn`/`updateManyAndReturn`) unless `select` or `relations` is given; only then do they run the 2 queries (the write returning primary keys + a `findMany`), inside a transaction
+- `deleteManyReturning` now deletes the records by the primary keys it fetched, instead of re-applying the `where` in the `deleteMany` — so a row inserted after the `findMany` is no longer deleted by mistake. When `select` leaves the primary key out, it is added internally and stripped from the result
+- `update` and `upsert` no longer drop the primary key from the update payload — only `save` omits it, in its update branch (`parsePrismaWriteData` got the `omitPkInUpdate` argument)
+- `isDecimal` validation is stricter
+- Clearer errors from `parseFieldValue` and `resolveProvider`; JSDoc added for the atomic `*Many` methods and the public types
+- Tooling: Jest + Babel → Vitest, npm (`package-lock.json`) → Bun (`bun.lock`), oxlint added, and `tests/` replaced by colocated specs + `test/`. `example.ts` was removed
+
+### Fixed
+- **Relation filters (`_some`/`_every`/`_none`/`_with`/`_without`) are now parsed as nested `where`s** — the filter body goes through the same recursive parser as the root `where`, so logical operators and the `ignoreCase`/`like` checks also apply inside relation filters
+- `PrismaClientModels` no longer includes numeric keys, so the `modelName` autocomplete only lists real models
+
+---
+
+## [2.0.0-dev] - 2026-10-29 (Português)
+
+> Versão de desenvolvimento do adapter para o **VSRepository v3** (`vsrepo` `^3.0.0-dev.2`). A linha 1.x continua mirando o VSRepository v2.
+
+### Mudanças incompatíveis (breaking)
+- **Agora mira o VSRepository v3** — a peer dependency `vsrepo` é `^3.0.0-dev.2` (era `^2.7.2`) e o adapter implementa o novo contrato do `VSRepoAdapter`. Não é compatível com o VSRepository v2: fique na 1.x nele
+- **Pacote ESM, Node `>=22`** — o pacote agora é `"type": "module"` (era CommonJS) e o `engines.node` passou de `>=18` pra `>=22`
+- **`tableName` renomeado pra `modelName`** na config do construtor
+- **`VSRepoPrisma7AdapterConfig` renomeado pra `Prisma7AdapterConfig`** — a classe do adapter continua exportada como `VSRepoPrisma7Adapter` e `Prisma7Adapter`
+- **`merge` removido** — ele foi descontinuado do contrato do `VSRepoAdapter` (o `VSRepository` agora faz o merge em memória por conta própria, em cima do `findOne` do adapter). A config `relations` do construtor agora só guia `create`/`update`/`upsert`/`save`
+- **`logSlowThresholdMs` removido** da config do construtor
+- **A config do construtor não é mais validada em runtime** — os erros `INVALID_ADAPTER_CONFIG` pra `tableName`/`pkName`/`relations`/`logLevel`/`provider` saíram, então esses campos agora são checados só pelo TypeScript. O construtor continua validando o client do Prisma e o model, com `MISSING_DB_CLIENT` (client `null`/`undefined`) e `MODEL_NOT_FOUND` (sem delegate `prisma[modelName]`)
+- **O provider é resolvido no construtor** — quando não dá pra detectar e nenhum `provider` foi informado, a construção lança um `VSRepoAdapterError` (`NOT_SUPPORTED`) pedindo o `provider`. Antes, a construção nunca lançava e só o `getPlaceholder` lançava, quando chamado
+- **O que o provider não suporta agora lança `NOT_SUPPORTED` antecipadamente**, em vez de ficar por conta do Prisma: `ignoreCase` fora de PostgreSQL/CockroachDB, `createManyReturning`/`updateManyReturning` em MySQL e SQL Server, e `ignoreConflicts` (o `skipDuplicates` do Prisma) no `createMany`/`createManyReturning` em SQL Server e SQLite. O operador `like` também lança `NOT_SUPPORTED` em todo provider (use `contains`/`startsWith`/`endsWith`)
+
+### Adicionado
+- **`incrementMany`, `decrementMany`, `multiplyMany` e `divideMany`** — as versões pra vários registros dos métodos atômicos `*One`: aplicam a operação, server-side, em todo registro que casa com `where` através do `updateMany` do Prisma (`{ campo: { increment | decrement | multiply | divide: valor } }`) e retornam um `CountResult`
+- **Testes de integração com bancos de verdade** — PostgreSQL, MySQL, SQLite, SQL Server e CockroachDB compartilham uma mesma suíte (`test/shared`) e rodam no CI, cada provider com seu próprio schema do Prisma, migrations e config em `prisma/<provider>`. Rode com `test:integration` ou `test:integration:<provider>`
+- **Testes unitários** pro adapter e pros parsers, resolvers e validators (arquivos `*.spec.ts` ao lado do código)
+- **Workflow de publicação** — dar push numa tag `v*` roda o CI inteiro (lint, testes unitários, testes de integração, build) e só então publica; tags de pré-release publicam na dist-tag da pré-release (`2.0.0-dev` → `dev`)
+
+### Alterado
+- `where` agora é opcional em `findOne`, `findOneOrThrow`, `findMany`, `count` e `exists`
+- `count` só repassa o `where` pro Prisma, e todo método agora repassa só as opções de leitura que a sua tipagem aceita (`select`, `relations`, `order`, `pagination`)
+- `createManyReturning` e `updateManyReturning` agora rodam **uma única** query (`createManyAndReturn`/`updateManyAndReturn`), a não ser que `select` ou `relations` seja informado; só aí rodam as 2 queries (a escrita retornando as primary keys + um `findMany`), dentro de uma transaction
+- `deleteManyReturning` agora deleta os registros pelas primary keys que buscou, em vez de re-aplicar o `where` no `deleteMany` — então uma linha inserida depois do `findMany` não é mais deletada por engano. Quando o `select` deixa a primary key de fora, ela é adicionada internamente e removida do resultado
+- `update` e `upsert` não removem mais a primary key do payload de update — só o `save` a omite, no branch de update (o `parsePrismaWriteData` ganhou o argumento `omitPkInUpdate`)
+- A validação do `isDecimal` ficou mais rígida
+- Erros mais claros no `parseFieldValue` e no `resolveProvider`; JSDoc adicionado para os métodos atômicos `*Many` e para os tipos públicos
+- Tooling: Jest + Babel → Vitest, npm (`package-lock.json`) → Bun (`bun.lock`), oxlint adicionado, e `tests/` substituído por specs ao lado do código + `test/`. O `example.ts` foi removido
+
+### Corrigido
+- **Filtros de relation (`_some`/`_every`/`_none`/`_with`/`_without`) agora são parseados como `where`s aninhados** — o corpo do filtro passa pelo mesmo parser recursivo do `where` raiz, então operadores lógicos e as checagens de `ignoreCase`/`like` também valem dentro de filtros de relation
+- `PrismaClientModels` não inclui mais chaves numéricas, então o autocomplete do `modelName` lista só models de verdade
+
+---
+
 ## [1.3.2] - 2026-09-30
 
 ### Fixed
@@ -294,7 +368,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-08-31
 
-> First official release. `@vsrepo/prisma7-adapter` is the officially published `VSRepoAdapter` implementation for [VSRepository v2](https://github.com/jaobrabo123/VSRepository), backed by [Prisma 7](https://www.prisma.io/).
+> First official release. `@vsrepo/prisma7-adapter` is the officially published `VSRepoAdapter` implementation for [VSRepository v2](https://github.com/VSRepository/VSRepository), backed by [Prisma 7](https://www.prisma.io/).
 
 ### Added
 - **Full `VSRepoAdapter` implementation** — translates every `VSRepository` operation into Prisma Client calls, backed by Prisma 7
@@ -319,7 +393,7 @@ All notable changes to this project will be documented in this file.
 
 ## [1.0.0] - 2026-08-31 (Português)
 
-> Primeira release oficial. `@vsrepo/prisma7-adapter` é a implementação oficial publicada de `VSRepoAdapter` para o [VSRepository v2](https://github.com/jaobrabo123/VSRepository), usando [Prisma 7](https://www.prisma.io/).
+> Primeira release oficial. `@vsrepo/prisma7-adapter` é a implementação oficial publicada de `VSRepoAdapter` para o [VSRepository v2](https://github.com/VSRepository/VSRepository), usando [Prisma 7](https://www.prisma.io/).
 
 ### Adicionado
 - **Implementação completa de `VSRepoAdapter`** — traduz toda operação do `VSRepository` em chamadas do Prisma Client, usando Prisma 7

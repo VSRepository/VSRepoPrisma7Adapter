@@ -1,6 +1,6 @@
 import { VSRepoSelect } from "vsrepo";
-import { PlainObject } from "../types/plain-object.type";
-import { isPlainObject } from "../validators/is-plain-object.validator";
+import { PlainObject } from "../types/plain-object.type.js";
+import { isPlainObject } from "../validators/is-plain-object.validator.js";
 
 export function parsePrismaSelect<T>(relations: VSRepoSelect<T>): PlainObject {
     const select: PlainObject = {};

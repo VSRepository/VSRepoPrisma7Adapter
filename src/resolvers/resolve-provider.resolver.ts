@@ -1,4 +1,5 @@
-import { PrismaProvider } from "../types/prisma-provider.type";
+import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
+import { PrismaProvider } from "../types/prisma-provider.type.js";
 
 export const PRISMA_PROVIDERS = ["postgresql", "cockroachdb", "mysql", "sqlite", "sqlserver"];
 
@@ -13,34 +14,11 @@ const ADAPTER_PROVIDER_TO_PRISMA_PROVIDER: Record<PrismaDriverAdapterProvider, P
     sqlserver: "sqlserver",
 };
 
-function isPrismaProvider(value: unknown): value is PrismaProvider {
-    return PrismaProvidersSet.has(value as PrismaProvider);
+function isPrismaProvider(value: string): value is PrismaProvider {
+    return PrismaProvidersSet.has(value);
 }
 
-/**
- * Resolves the Prisma datasource provider of a Prisma Client, in the following
- * precedence order:
- *
- * 1. `override` — the `provider` explicitly configured by the user in the
- *    adapter config (wins over everything);
- * 2. `prisma._engineConfig?.activeProvider` — the schema provider baked into
- *    the generated client at compile time (e.g. `"postgresql"` from
- *    `datasource db { provider = "postgresql" }`). This is what Prisma itself
- *    uses internally to select the query compiler and validate the driver
- *    adapter, so it is the most reliable signal available — even though it is
- *    a private/underscored API, with no semver guarantee;
- * 3. `prisma._engineConfig?.adapter?.provider` — the runtime driver adapter's
- *    declared provider (e.g. `"postgres"` for `PrismaPg`), as a secondary
- *    source when `activeProvider` isn't present.
- *
- * Returns `undefined` when none of the sources yield a known provider — the
- * caller decides what to do with that (e.g. `getPlaceholder` throws a
- * `NOT_SUPPORTED` error only when it actually needs to know the provider).
- */
-export function resolveProvider(
-    prisma: unknown,
-    override?: PrismaProvider,
-): PrismaProvider | undefined {
+export function resolveProvider(prisma: unknown, override?: PrismaProvider): PrismaProvider {
     if (override !== undefined) {
         return override;
     }
@@ -51,19 +29,20 @@ export function resolveProvider(
         }
     )._engineConfig;
 
-    if (isPrismaProvider(engineConfig?.activeProvider)) {
+    if (typeof engineConfig?.activeProvider === "string" && isPrismaProvider(engineConfig.activeProvider)) {
         return engineConfig.activeProvider;
     }
 
     const adapterProvider = engineConfig?.adapter?.provider;
-    if (
-        typeof adapterProvider === "string" &&
-        adapterProvider in ADAPTER_PROVIDER_TO_PRISMA_PROVIDER
-    ) {
-        return ADAPTER_PROVIDER_TO_PRISMA_PROVIDER[
-            adapterProvider as keyof typeof ADAPTER_PROVIDER_TO_PRISMA_PROVIDER
-        ];
+    if (typeof adapterProvider === "string" && adapterProvider in ADAPTER_PROVIDER_TO_PRISMA_PROVIDER) {
+        return ADAPTER_PROVIDER_TO_PRISMA_PROVIDER[adapterProvider as keyof typeof ADAPTER_PROVIDER_TO_PRISMA_PROVIDER];
     }
 
-    return undefined;
+    throw new VSRepoAdapterError(
+        `Could not detect the Prisma datasource provider from the provided client. ` +
+            `Set the 'provider' option in the adapter config explicitly ` +
+            `(one of: ${PRISMA_PROVIDERS.join(", ")}).`,
+        AdapterErrorCode.NOT_SUPPORTED,
+        null,
+    );
 }

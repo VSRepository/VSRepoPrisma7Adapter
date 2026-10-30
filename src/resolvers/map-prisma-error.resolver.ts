@@ -6,7 +6,7 @@ import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
  * realistically expected to react to are listed here — anything else falls
  * back to `AdapterErrorCode.UNKNOWN` in `mapPrismaError`.
  *
- * @see https://www.prisma.io/docs/orm/reference/error-reference
+ * @see https://www.prisma.io/docs/orm/v7/reference/error-reference
  */
 const KNOWN_REQUEST_ERROR_CODE_MAP: Record<string, AdapterErrorCode> = {
     // Connection / engine errors (P1xxx)
@@ -51,36 +51,17 @@ const KNOWN_REQUEST_ERROR_CODE_MAP: Record<string, AdapterErrorCode> = {
     P2037: AdapterErrorCode.CONNECTION_POOL_EXHAUSTED,
 };
 
-/** Duck-typed shape of the handful of Prisma error properties this mapper reads. */
 type PrismaLikeError = {
     name?: string;
     code?: string;
     message?: string;
 };
 
-/**
- * Reads the Prisma error class name (`PrismaClientKnownRequestError`,
- * `PrismaClientInitializationError`, ...) off a caught error without
- * importing `@prisma/client` — the adapter never imports concrete Prisma
- * types (see `Prisma7ClientLike`), so this duck-types via `error.name`
- * instead of using `instanceof`.
- */
 function prismaErrorName(error: unknown): string | undefined {
     if (!(error instanceof Error)) return undefined;
     return error.name || error.constructor?.name;
 }
 
-/**
- * Converts any error caught around a Prisma Client call into a
- * `VSRepoAdapterError`, so `VSRepoPrisma7Adapter` never lets a raw Prisma (or
- * other) error escape. Already-wrapped errors — e.g. bubbling up from a
- * nested adapter call, such as `save` inside `saveMany`, or a config/usage
- * error thrown by the adapter itself (see `stripRelationFields`) — are
- * returned as-is instead of being wrapped a second time.
- *
- * @param error - The raw error caught around a Prisma Client call.
- * @param operation - Name of the adapter method that failed, used in the message.
- */
 export function mapPrismaError(error: unknown, operation: string): VSRepoAdapterError {
     if (error instanceof VSRepoAdapterError) return error;
 
@@ -89,9 +70,7 @@ export function mapPrismaError(error: unknown, operation: string): VSRepoAdapter
 
     switch (name) {
         case "PrismaClientKnownRequestError": {
-            const code = prismaError.code
-                ? KNOWN_REQUEST_ERROR_CODE_MAP[prismaError.code]
-                : undefined;
+            const code = prismaError.code ? KNOWN_REQUEST_ERROR_CODE_MAP[prismaError.code] : undefined;
 
             return new VSRepoAdapterError(
                 `'${operation}' failed (Prisma code: ${prismaError.code ?? "unknown"})`,
