@@ -29,6 +29,12 @@ jobs:
             - name: Install dependencies
               run: bun install --frozen-lockfile
 
+            - name: Generate Prisma Clients
+              run: |
+                  bun run prisma:generate:postgres
+                  bun run prisma:generate:mysql
+                  bun run prisma:generate:sqlite
+
             - name: Type Check
               run: bun run typecheck
 
