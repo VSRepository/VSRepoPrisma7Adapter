@@ -2,6 +2,7 @@ import "dotenv/config";
 import { AdapterErrorCode, VSLogLevel, VSRepoAdapterError } from "vsrepo";
 import { VSRepoPrisma7Adapter } from "../../src/prisma7.adapter.js";
 import { PrismaProvider } from "../../src/types/prisma-provider.type.js";
+import { AdapterRelations } from "../../src/index.js";
 
 /**
  * What each database/driver can (or cannot) do through Prisma. Used to run the
@@ -70,14 +71,14 @@ interface UserRow {
     address?: AddressRow | null;
 }
 
-const userRelations = {
+const userRelations: AdapterRelations<UserRow> = {
     address: { mode: "oto", restriction: "set", pk: "id", nullable: true },
     posts: { mode: "otm", restriction: "set", pk: "id" },
-} as any;
+};
 
-const postRelations = {
+const postRelations: AdapterRelations<PostRow> = {
     tags: { mode: "mtm", restriction: "set", pk: "id" },
-} as any;
+};
 
 /** Deterministic text ordering (`null` sorts as the text "null", after any name). */
 const compareText = (a: unknown, b: unknown): number => String(a).localeCompare(String(b));
@@ -99,14 +100,14 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 pkName: "id",
                 relations: userRelations,
                 logLevel: VSLogLevel.NONE,
-            } as any);
+            });
 
             posts = new VSRepoPrisma7Adapter<PostRow>(prisma, {
                 modelName: "post",
                 pkName: "id",
                 relations: postRelations,
                 logLevel: VSLogLevel.NONE,
-            } as any);
+            });
         });
 
         afterAll(async () => {
@@ -190,7 +191,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             it("should only return the selected fields", async () => {
                 await seedUser({ name: "John", email: "john@mail.com" });
 
-                const [row] = await users.findMany({}, { select: { id: true, name: true } } as any);
+                const [row] = await users.findMany({}, { select: { id: true, name: true } });
 
                 expect(Object.keys(row!).sort(compareText)).toEqual(["id", "name"]);
             });
@@ -198,10 +199,13 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             it("should order and paginate", async () => {
                 await seedDirectory();
 
-                const page = await users.findMany({ name: { not: null } }, {
-                    order: { balance: "DESC" },
-                    pagination: { offset: 1, limit: 2 },
-                } as any);
+                const page = await users.findMany(
+                    { name: { not: null } },
+                    {
+                        order: { balance: "DESC" },
+                        pagination: { offset: 1, limit: 2 },
+                    },
+                );
 
                 expect(page.map(u => u.name)).toEqual(["Carol", "Bob"]);
             });
@@ -211,7 +215,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 await seedUser({ name: "A", email: "a2@mail.com", balance: 1 });
                 await seedUser({ name: "C", email: "c3@mail.com", balance: 0 });
 
-                const rows = await users.findMany({}, { order: [{ balance: "asc" }, { name: "desc" }] } as any);
+                const rows = await users.findMany({}, { order: [{ balance: "asc" }, { name: "desc" }] });
 
                 expect(rows.map(r => r.name)).toEqual(["C", "B", "A"]);
             });
@@ -223,9 +227,12 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 });
                 await seedPost(john.id, { title: "first" });
 
-                const found = await users.findOne({ id: john.id }, {
-                    relations: { posts: true, address: true },
-                } as any);
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        relations: { posts: true, address: true },
+                    },
+                );
 
                 expect(found!.posts).toHaveLength(1);
                 expect(found!.address).toMatchObject({ street: "Rua A" });
@@ -236,7 +243,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 const post = await seedPost(john.id);
                 await prisma.tag.create({ data: { name: "ts", posts: { connect: { id: post.id } } } });
 
-                const found = await users.findOne({ id: john.id }, { relations: { posts: { tags: true } } } as any);
+                const found = await users.findOne({ id: john.id }, { relations: { posts: { tags: true } } });
 
                 expect(found!.posts![0]!.tags).toHaveLength(1);
             });
@@ -312,11 +319,11 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 await seedPost(alice.id, { title: "draft", published: false });
                 await seedPost(bob.id, { title: "bye", published: true });
 
-                const some = await users.findMany({ posts: { _some: { title: "draft" } } } as any);
-                const none = await users.findMany({ posts: { _none: {} } } as any);
+                const some = await users.findMany({ posts: { _some: { title: "draft" } } });
+                const none = await users.findMany({ posts: { _none: {} } });
                 const every = await users.findMany({
                     AND: [{ posts: { _some: {} } }, { posts: { _every: { published: true } } }],
-                } as any);
+                });
 
                 expect(names(some)).toEqual(["Alice"]);
                 expect(names(none)).toEqual(["Carol", "Dave", null]);
@@ -329,8 +336,8 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     data: { street: "Rua A", city: "Aracaju", country: "BR", userId: carol.id },
                 });
 
-                const withAddress = await users.findMany({ address: { _with: { city: "Aracaju" } } } as any);
-                const withoutAracaju = await users.findMany({ address: { _without: { city: "Aracaju" } } } as any);
+                const withAddress = await users.findMany({ address: { _with: { city: "Aracaju" } } });
+                const withoutAracaju = await users.findMany({ address: { _without: { city: "Aracaju" } } });
 
                 expect(names(withAddress)).toEqual(["Carol"]);
                 expect(withoutAracaju).toHaveLength(4);
@@ -340,15 +347,15 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 const alice = (await users.findOne({ name: "Alice" }))!;
                 await seedPost(alice.id, { title: "Hello World" });
 
-                const found = await users.findMany({ posts: { _some: { title: { startsWith: "Hello" } } } } as any);
+                const found = await users.findMany({ posts: { _some: { title: { startsWith: "Hello" } } } });
 
                 expect(names(found)).toEqual(["Alice"]);
             });
 
             it("should reject 'like' nested inside a relation filter", async () => {
-                await expect(
-                    users.findMany({ posts: { _some: { title: { like: "%x%" } } } } as any),
-                ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+                await expect(users.findMany({ posts: { _some: { title: { like: "%x%" } } } })).rejects.toMatchObject({
+                    code: AdapterErrorCode.NOT_SUPPORTED,
+                });
             });
 
             if (capabilities.insensitiveMode) {
@@ -372,7 +379,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
 
                 it("should reject ignoreCase nested in a relation filter with NOT_SUPPORTED", async () => {
                     await expect(
-                        users.findMany({ posts: { _some: { title: { contains: "x", ignoreCase: true } } } } as any),
+                        users.findMany({ posts: { _some: { title: { contains: "x", ignoreCase: true } } } }),
                     ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
                 });
 
@@ -492,9 +499,12 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             it("should deleteManyReturning without leaking the pk when select omits it", async () => {
                 await seedDirectory();
 
-                const deleted = await users.deleteManyReturning({ balance: { lte: 20 } }, {
-                    select: { name: true },
-                } as any);
+                const deleted = await users.deleteManyReturning(
+                    { balance: { lte: 20 } },
+                    {
+                        select: { name: true },
+                    },
+                );
 
                 expect(deleted.map(d => d.name).sort(compareText)).toEqual(["Alice", "Bob"]);
                 expect(deleted[0]).not.toHaveProperty("id");
@@ -570,7 +580,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                             { email: "a@mail.com", name: "A" },
                             { email: "b@mail.com", name: "B" },
                         ],
-                        { select: { name: true } } as any,
+                        { select: { name: true } },
                     );
 
                     expect(created.map(c => c.name).sort(compareText)).toEqual(["A", "B"]);
@@ -620,7 +630,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     name: "John",
                     address: { street: "Rua A", city: "Aracaju", country: "BR" },
                     posts: [{ title: "first" }, { title: "second" }],
-                } as any);
+                });
 
                 const stored = await prisma.user.findUnique({
                     where: { id: created.id },
@@ -635,9 +645,12 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     address: { create: { street: "Rua A", city: "Aracaju", country: "BR" } },
                 });
 
-                await users.update({ id: john.id }, {
-                    address: { street: "Rua B", city: "Estância", country: "BR" },
-                } as any);
+                await users.update(
+                    { id: john.id },
+                    {
+                        address: { street: "Rua B", city: "Estância", country: "BR" },
+                    },
+                );
 
                 const address = await prisma.address.findUnique({ where: { userId: john.id } });
                 expect(address).toMatchObject({ street: "Rua B", city: "Estância" });
@@ -649,7 +662,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     address: { create: { street: "Rua A", city: "Aracaju", country: "BR" } },
                 });
 
-                await users.update({ id: john.id }, { address: null } as any);
+                await users.update({ id: john.id }, { address: null });
 
                 await expect(prisma.address.count()).resolves.toBe(0);
             });
@@ -659,9 +672,12 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 const keep = await seedPost(john.id, { title: "keep" });
                 await seedPost(john.id, { title: "drop" });
 
-                await users.update({ id: john.id }, {
-                    posts: [{ id: keep.id, title: "kept and renamed" }, { title: "brand new" }],
-                } as any);
+                await users.update(
+                    { id: john.id },
+                    {
+                        posts: [{ id: keep.id, title: "kept and renamed" }, { title: "brand new" }],
+                    },
+                );
 
                 const titles = (await prisma.post.findMany({ where: { authorId: john.id } }))
                     .map((p: PostRow) => p.title)
@@ -674,7 +690,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 await seedPost(john.id);
                 await seedPost(john.id);
 
-                await users.update({ id: john.id }, { posts: [] } as any);
+                await users.update({ id: john.id }, { posts: [] });
 
                 await expect(prisma.post.count({ where: { authorId: john.id } })).resolves.toBe(0);
             });
@@ -684,13 +700,13 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     email: "john@mail.com",
                     address: { street: "Rua A", city: "Aracaju", country: "BR" },
                     posts: [{ title: "first" }],
-                } as any);
+                });
 
                 const again = await users.save({
                     id: saved.id,
                     email: saved.email,
                     posts: [{ title: "second" }],
-                } as any);
+                });
 
                 expect(again.id).toBe(saved.id);
                 const posts = await prisma.post.findMany({ where: { authorId: saved.id } });
@@ -707,8 +723,8 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                     title: "frameworks",
                     authorId: john.id,
                     tags: [{ id: react.id, name: "react" }],
-                } as any);
-                await posts.update({ id: post.id }, { tags: [{ id: vue.id, name: "vue" }] } as any);
+                });
+                await posts.update({ id: post.id }, { tags: [{ id: vue.id, name: "vue" }] });
 
                 const stored = await prisma.post.findUnique({ where: { id: post.id }, include: { tags: true } });
                 expect(stored.tags.map((t: TagRow) => t.name)).toEqual(["vue"]);
@@ -737,10 +753,10 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
 
         //         const merged = await users.merge(
         //             { id: john.id },
-        //             { posts: [{ id: first.id, title: "renamed" }] } as any,
+        //             { posts: [{ id: first.id, title: "renamed" }] },
         //             {
         //                 relations: { posts: true },
-        //             } as any,
+        //             },
         //         );
 
         //         expect(merged!.posts).toEqual([expect.objectContaining({ id: first.id, title: "renamed" })]);
@@ -750,7 +766,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
         //         const john = await seedUser({ name: "John" });
 
         //         const merged = await users.merge({ id: john.id }, { name: "Johnny" });
-        //         await users.save(merged as any);
+        //         await users.save(merged);
 
         //         await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
         //             name: "Johnny",
@@ -762,7 +778,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             it("should round-trip a Decimal column", async () => {
                 const john = await seedUser();
 
-                const created = await posts.create({ title: "priced", authorId: john.id, price: "10.50" } as any);
+                const created = await posts.create({ title: "priced", authorId: john.id, price: "10.50" });
                 const found = await posts.findOne({ id: created.id });
 
                 expect(found!.price.toNumber()).toBe(10.5);
@@ -782,7 +798,7 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 const john = await seedUser();
                 const post = await seedPost(john.id, { price: "10.00" });
 
-                const updated = await posts.incrementOne("price" as any, "2.50" as any, { id: post.id });
+                const updated = await posts.incrementOne("price", "2.50", { id: post.id });
 
                 expect(updated.price.toNumber()).toBe(12.5);
             });
@@ -885,10 +901,10 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 await seedPost(john.id, { price: "10.25" });
                 await seedPost(john.id, { price: "20.75" });
 
-                await expect(posts.sum("price" as any)).resolves.toBe(31);
-                await expect(posts.average("price" as any)).resolves.toBe(15.5);
-                await expect(posts.min("price" as any)).resolves.toBe(10.25);
-                await expect(posts.max("price" as any)).resolves.toBe(20.75);
+                await expect(posts.sum("price")).resolves.toBe(31);
+                await expect(posts.average("price")).resolves.toBe(15.5);
+                await expect(posts.min("price")).resolves.toBe(10.25);
+                await expect(posts.max("price")).resolves.toBe(20.75);
             });
         });
 

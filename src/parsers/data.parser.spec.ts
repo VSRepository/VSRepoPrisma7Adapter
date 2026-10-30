@@ -381,7 +381,7 @@ describe("parsePrismaWriteData", () => {
                     relations({ posts: rel("otm", "set") }),
                 );
 
-                expect((result.update.posts as any).deleteMany).toEqual({ id: { notIn: ["1", "2"] } });
+                expect(result.update.posts.deleteMany).toEqual({ id: { notIn: ["1", "2"] } });
             });
 
             it("should delete everything not sent when restriction is 'set' and the array is empty", () => {
@@ -464,7 +464,7 @@ describe("parsePrismaWriteData", () => {
                     relations({ posts: rel("otm", "add") }),
                 );
 
-                expect((result.update.posts as any).upsert.map((u: any) => u.where.id)).toEqual(["3", "1", "2"]);
+                expect(result.update.posts.upsert.map((u: any) => u.where.id)).toEqual(["3", "1", "2"]);
             });
         });
 
@@ -588,7 +588,7 @@ describe("parsePrismaWriteData", () => {
             );
 
             expect(result.update).not.toHaveProperty("id");
-            expect((result.update.posts as any).upsert[0].where).toEqual({ id: "2" });
+            expect(result.update.posts.upsert[0].where).toEqual({ id: "2" });
         });
     });
 });

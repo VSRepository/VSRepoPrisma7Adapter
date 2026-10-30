@@ -69,7 +69,7 @@ function prismaError(name: string, extra: Record<string, unknown> = {}): Error {
 const relationsConfig = {
     address: { mode: "mto", restriction: "add", pk: "id" },
     posts: { mode: "otm", restriction: "add", pk: "id" },
-} as any;
+};
 
 /**
  * Builds the adapter on top of a fake Prisma Client: the root client exposes `$on`
@@ -98,7 +98,7 @@ function setup(config: Record<string, unknown> = {}, prismaOverrides: Record<str
         pkName: "id",
         logLevel: VSLogLevel.NONE,
         ...config,
-    } as any);
+    });
 
     return { adapter, prisma, user, tx, txUser };
 }
@@ -108,8 +108,7 @@ const where = { name: { contains: "jo", ignoreCase: true } };
 describe("VSRepoPrisma7Adapter", () => {
     describe("constructor", () => {
         it("should throw MISSING_DB_CLIENT when the prisma client is null", () => {
-            const create = () =>
-                new VSRepoPrisma7Adapter<User>(null as any, { modelName: "user", pkName: "id" } as any);
+            const create = () => new VSRepoPrisma7Adapter<User>(null as any, { modelName: "user", pkName: "id" });
 
             expect(create).toThrow(VSRepoAdapterError);
             expect(create).toThrow(expect.objectContaining({ code: AdapterErrorCode.MISSING_DB_CLIENT }));
@@ -247,11 +246,14 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup();
             user.findMany!.mockResolvedValue([]);
 
-            await adapter.findMany({ age: { gt: 18 } }, {
-                select: { id: true, name: true },
-                order: { name: "ASC" },
-                pagination: { offset: 10, limit: 5 },
-            } as any);
+            await adapter.findMany(
+                { age: { gt: 18 } },
+                {
+                    select: { id: true, name: true },
+                    order: { name: "ASC" },
+                    pagination: { offset: 10, limit: 5 },
+                },
+            );
 
             expect(user.findMany).toHaveBeenCalledWith({
                 where: { age: { gt: 18 } },
@@ -266,7 +268,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup();
             user.findMany!.mockResolvedValue([]);
 
-            await adapter.findMany({}, { relations: { posts: true, address: true } } as any);
+            await adapter.findMany({}, { relations: { posts: true, address: true } });
 
             expect(user.findMany).toHaveBeenCalledWith({
                 where: {},
@@ -278,7 +280,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup();
             user.findMany!.mockResolvedValue([]);
 
-            await adapter.findMany({}, { select: { id: true }, relations: { posts: true } } as any);
+            await adapter.findMany({}, { select: { id: true }, relations: { posts: true } });
 
             const arg = user.findMany!.mock.calls[0]![0];
             expect(arg.select).toEqual({ id: true });
@@ -392,7 +394,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup({ relations: relationsConfig });
             user.create!.mockResolvedValue({});
 
-            await adapter.create({ name: "John", posts: [{ title: "A" }, { id: "9", title: "B" }] } as any);
+            await adapter.create({ name: "John", posts: [{ title: "A" }, { id: "9", title: "B" }] });
 
             expect(user.create).toHaveBeenCalledWith({
                 data: {
@@ -409,7 +411,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup();
             user.create!.mockResolvedValue({});
 
-            await adapter.create({ name: "John" }, { select: { id: true } } as any);
+            await adapter.create({ name: "John" }, { select: { id: true } });
 
             expect(user.create).toHaveBeenCalledWith({ data: { name: "John" }, select: { id: true } });
         });
@@ -467,7 +469,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup({ relations: relationsConfig });
             user.upsert!.mockResolvedValue({});
 
-            await adapter.save({ id: "1", address: { id: "10", street: "Rua A" } } as any);
+            await adapter.save({ id: "1", address: { id: "10", street: "Rua A" } });
 
             const address = { id: "10", street: "Rua A" };
             expect(user.upsert).toHaveBeenCalledWith({
@@ -481,7 +483,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user, txUser, tx } = setup();
             txUser.create!.mockResolvedValue({});
 
-            await adapter.save({ name: "John" }, { db: tx, select: { id: true } } as any);
+            await adapter.save({ name: "John" }, { db: tx, select: { id: true } });
 
             expect(txUser.create).toHaveBeenCalledWith({ data: { name: "John" }, select: { id: true } });
             expect(user.create).not.toHaveBeenCalled();
@@ -581,7 +583,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user } = setup({ relations: relationsConfig });
             user.upsert!.mockResolvedValue({});
 
-            await adapter.upsert({ id: "1" }, { posts: [{ title: "A" }] } as any, { posts: [{ title: "B" }] } as any);
+            await adapter.upsert({ id: "1" }, { posts: [{ title: "A" }] }, { posts: [{ title: "B" }] });
 
             const arg = user.upsert!.mock.calls[0]![0];
             expect(arg.create).toEqual({ posts: { create: [{ title: "A" }], connectOrCreate: [] } });
@@ -605,7 +607,7 @@ describe("VSRepoPrisma7Adapter", () => {
             user.update!.mockResolvedValue({});
             const address = { id: "10", street: "Rua A" };
 
-            await adapter.update({ id: "1" }, { address, posts: [{ title: "A" }] } as any);
+            await adapter.update({ id: "1" }, { address, posts: [{ title: "A" }] });
 
             expect(user.update).toHaveBeenCalledWith({
                 where: { id: "1" },
@@ -619,7 +621,7 @@ describe("VSRepoPrisma7Adapter", () => {
         it("should reject when a non-nullable to-one relation is set to null", async () => {
             const { adapter, user } = setup({ relations: relationsConfig });
 
-            await expect(adapter.update({ id: "1" }, { address: null } as any)).rejects.toMatchObject({
+            await expect(adapter.update({ id: "1" }, { address: null })).rejects.toMatchObject({
                 code: AdapterErrorCode.INVALID_DATA,
             });
             expect(user.update).not.toHaveBeenCalled();
@@ -658,7 +660,7 @@ describe("VSRepoPrisma7Adapter", () => {
         it("should reject with NOT_SUPPORTED when the payload has a configured relation field", async () => {
             const { adapter, user } = setup({ relations: relationsConfig });
 
-            const error = await adapter.updateMany({ id: "1" }, { posts: [{ title: "A" }] } as any).catch(e => e);
+            const error = await adapter.updateMany({ id: "1" }, { posts: [{ title: "A" }] }).catch(e => e);
 
             expect(error).toBeInstanceOf(VSRepoAdapterError);
             expect(error.code).toBe(AdapterErrorCode.NOT_SUPPORTED);
@@ -754,9 +756,9 @@ describe("VSRepoPrisma7Adapter", () => {
         it("should reject with NOT_SUPPORTED when the payload has a configured relation field", async () => {
             const { adapter } = setup({ relations: relationsConfig });
 
-            await expect(
-                adapter.updateManyReturning({ id: "1" }, { address: { id: "1" } } as any),
-            ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+            await expect(adapter.updateManyReturning({ id: "1" }, { address: { id: "1" } })).rejects.toMatchObject({
+                code: AdapterErrorCode.NOT_SUPPORTED,
+            });
         });
 
         it("should map errors", async () => {
@@ -795,11 +797,9 @@ describe("VSRepoPrisma7Adapter", () => {
         it("should reject with NOT_SUPPORTED when a record has a configured relation field", async () => {
             const { adapter, user } = setup({ relations: relationsConfig });
 
-            await expect(adapter.createMany([{ name: "A" }, { posts: [{ title: "x" }] } as any])).rejects.toMatchObject(
-                {
-                    code: AdapterErrorCode.NOT_SUPPORTED,
-                },
-            );
+            await expect(adapter.createMany([{ name: "A" }, { posts: [{ title: "x" }] }])).rejects.toMatchObject({
+                code: AdapterErrorCode.NOT_SUPPORTED,
+            });
             expect(user.createMany).not.toHaveBeenCalled();
         });
     });
@@ -840,7 +840,7 @@ describe("VSRepoPrisma7Adapter", () => {
             txUser.createManyAndReturn!.mockResolvedValue([{ id: "1" }]);
             txUser.findMany!.mockResolvedValue([]);
 
-            await adapter.createManyReturning([{ name: "A" }], { relations: { posts: true } } as any);
+            await adapter.createManyReturning([{ name: "A" }], { relations: { posts: true } });
 
             expect(txUser.createManyAndReturn!.mock.calls[0]![0].include).toBeUndefined();
             expect(txUser.findMany).toHaveBeenCalledWith({
@@ -889,7 +889,7 @@ describe("VSRepoPrisma7Adapter", () => {
         it("should reject with NOT_SUPPORTED when a record has a configured relation field", async () => {
             const { adapter } = setup({ relations: relationsConfig });
 
-            await expect(adapter.createManyReturning([{ address: { id: "1" } } as any])).rejects.toMatchObject({
+            await expect(adapter.createManyReturning([{ address: { id: "1" } }])).rejects.toMatchObject({
                 code: AdapterErrorCode.NOT_SUPPORTED,
             });
         });
@@ -974,7 +974,7 @@ describe("VSRepoPrisma7Adapter", () => {
             ]);
             txUser.deleteMany!.mockResolvedValue({ count: 2 });
 
-            const result = await adapter.deleteManyReturning({}, { select: { name: true } } as any);
+            const result = await adapter.deleteManyReturning({}, { select: { name: true } });
 
             expect(txUser.findMany).toHaveBeenCalledWith({ where: {}, select: { name: true, id: true } });
             expect(txUser.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ["1", "2"] } } });
@@ -986,7 +986,7 @@ describe("VSRepoPrisma7Adapter", () => {
             txUser.findMany!.mockResolvedValue([{ id: "1", name: "A" }]);
             txUser.deleteMany!.mockResolvedValue({ count: 1 });
 
-            const result = await adapter.deleteManyReturning({}, { select: { id: true, name: true } } as any);
+            const result = await adapter.deleteManyReturning({}, { select: { id: true, name: true } });
 
             expect(result).toEqual([{ id: "1", name: "A" }]);
         });
@@ -996,7 +996,7 @@ describe("VSRepoPrisma7Adapter", () => {
             txUser.findMany!.mockResolvedValue([{ id: "1", posts: [] }]);
             txUser.deleteMany!.mockResolvedValue({ count: 1 });
 
-            const result = await adapter.deleteManyReturning({}, { relations: { posts: true } } as any);
+            const result = await adapter.deleteManyReturning({}, { relations: { posts: true } });
 
             expect(txUser.findMany).toHaveBeenCalledWith({ where: {}, include: { posts: true } });
             expect(result).toEqual([{ id: "1", posts: [] }]);
@@ -1099,7 +1099,7 @@ describe("VSRepoPrisma7Adapter", () => {
     //         const result = await adapter.merge({ id: "1" }, {
     //             address: { street: "Rua B" },
     //             posts: [{ id: "2", title: "B" }],
-    //         } as any);
+    //         });
 
     //         expect(result).toEqual({
     //             id: "1",
@@ -1115,7 +1115,7 @@ describe("VSRepoPrisma7Adapter", () => {
     //         const { adapter, user } = setup();
     //         user.findFirst!.mockResolvedValue({ id: "1" });
 
-    //         await adapter.merge({ id: "1" }, { name: "Jane" }, { relations: { posts: true } } as any);
+    //         await adapter.merge({ id: "1" }, { name: "Jane" }, { relations: { posts: true } });
 
     //         expect(user.findFirst).toHaveBeenCalledWith({ where: { id: "1" }, include: { posts: true } });
     //     });
@@ -1188,7 +1188,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, prisma } = setup();
             const fn = vi.fn().mockResolvedValue(undefined);
 
-            await adapter.runInTransaction(fn, { isolationLevel: "Serializable", timeoutMs: 5000 } as any);
+            await adapter.runInTransaction(fn, { isolationLevel: "Serializable", timeoutMs: 5000 });
 
             expect(prisma.$transaction).toHaveBeenCalledWith(fn, { isolationLevel: "Serializable", timeout: 5000 });
         });
@@ -1246,7 +1246,7 @@ describe("VSRepoPrisma7Adapter", () => {
             const { adapter, user, txUser, tx } = setup();
             txUser.update!.mockResolvedValue({});
 
-            await adapter.incrementOne("age", 1, { id: "1" }, { db: tx, select: { id: true } } as any);
+            await adapter.incrementOne("age", 1, { id: "1" }, { db: tx, select: { id: true } });
 
             expect(txUser.update).toHaveBeenCalledWith({
                 where: { id: "1" },
