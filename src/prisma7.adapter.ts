@@ -36,6 +36,7 @@ import { PrismaRepositoryLike } from "./types/prisma-repository-like.type.js";
 import { PlainObject } from "./types/plain-object.type.js";
 import { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 import { isDecimal } from "./validators/is-decimal.validator.js";
+import { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";
 
 /**
  * `VSRepoAdapter` implementation for Prisma 7.
@@ -51,6 +52,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private readonly logger: VSLogger;
     private readonly provider: PrismaProvider;
 
+    private static globalConfig: Prisma7GlobalConfig = {};
+
     constructor(
         private readonly prisma: K,
         config: Prisma7AdapterConfig<T, K>,
@@ -62,14 +65,21 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         this.modelName = config.modelName;
         this.pkName = config.pkName as string;
         this.relations = config.relations;
-        this.provider = resolveProvider(prisma, config.provider);
-        this.logger = new VSLogger(config.logLevel ?? VSLogLevel.WARN, this.constructor.name + "Logger");
+        this.provider = resolveProvider(prisma, config.provider ?? VSRepoPrisma7Adapter.globalConfig.provider);
+        this.logger = new VSLogger(
+            config.logLevel ?? VSRepoPrisma7Adapter.globalConfig.logLevel ?? VSLogLevel.WARN,
+            this.constructor.name + "Logger",
+        );
 
         this.logger.logInfo(
             `${this.constructor.name} initialized for table '${this.modelName}' (pkName: '${this.pkName}'${
                 this.relations ? `, relations: [${Object.keys(this.relations).join(", ")}]` : ""
             }, provider: ${this.provider ? `'${this.provider}'` : "<not detected>"})`,
         );
+    }
+
+    static setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
+        this.globalConfig = globalConfig;
     }
 
     private getPrismaRepository(db?: any): PrismaRepositoryLike {
