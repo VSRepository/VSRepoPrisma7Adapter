@@ -51,6 +51,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private readonly relations?: AdapterRelations<T>;
     private readonly logger: VSLogger;
     private readonly provider: PrismaProvider;
+    private readonly allowOmitPk?: boolean;
 
     private static globalConfig: Prisma7GlobalConfig = {};
 
@@ -70,11 +71,12 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             config.logLevel ?? VSRepoPrisma7Adapter.globalConfig.logLevel ?? VSLogLevel.WARN,
             this.constructor.name + "Logger",
         );
+        this.allowOmitPk = config.allowOmitPk ?? VSRepoPrisma7Adapter.globalConfig.allowOmitPk;
 
         this.logger.logInfo(
             `${this.constructor.name} initialized for table '${this.modelName}' (pkName: '${this.pkName}'${
                 this.relations ? `, relations: [${Object.keys(this.relations).join(", ")}]` : ""
-            }, provider: ${this.provider ? `'${this.provider}'` : "<not detected>"})`,
+            }, provider: ${this.provider ? `'${this.provider}'` : "<not detected>"}${this.allowOmitPk ? ", allowOmitPk: true" : ""})`,
         );
     }
 
@@ -349,6 +351,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         }
     }
 
+    private parseData(obj: any, omitPkInUpdate?: boolean) {
+        return parsePrismaWriteData(obj, this.pkName, this.relations, omitPkInUpdate, this.allowOmitPk);
+    }
+
     /** Fetches a single record matching `where`. */
     async findOne(where?: VSRepoWhere<T>, options?: AdapterMethodOptions<T>): Promise<T | null> {
         const arg = { ...this.resolveReadArg(options), where: this.parseWhere(where) };
@@ -380,7 +386,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const pkValue = objAny[this.pkName];
         const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
         const repo = this.getPrismaRepository(options?.db);
-        const { create, update } = parsePrismaWriteData(objAny, this.pkName, this.relations, true);
+        const { create, update } = this.parseData(objAny, true);
 
         if (pkValue === undefined) {
             const arg = { ...readArg, data: create };
@@ -507,7 +513,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Updates a single record matching `where`. */
     async update(where: VSRepoWhere<T>, obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
-        const { update } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
+        const { update } = this.parseData(obj);
         const arg = {
             ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
             where: this.parseWhere(where),
@@ -625,7 +631,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Creates a single record. */
     async create(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
-        const { create } = parsePrismaWriteData(obj as PlainObject, this.pkName, this.relations);
+        const { create } = this.parseData(obj);
         const arg = {
             ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
             data: create,
@@ -739,8 +745,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         update: DeepPartial<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
-        const parsedCreate = parsePrismaWriteData(create as PlainObject, this.pkName, this.relations).create;
-        const parsedUpdate = parsePrismaWriteData(update as PlainObject, this.pkName, this.relations).update;
+        const parsedCreate = this.parseData(create).create;
+        const parsedUpdate = this.parseData(update).update;
 
         const arg = {
             ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),

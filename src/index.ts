@@ -7,3 +7,4 @@ export type { AdapterRelations } from "./types/adapter-relations.type.js";
 export type { Prisma7AdapterConfig } from "./types/adapter-config.type.js";
 export type { PrismaClientModels } from "./types/prisma-client-models.type.js";
 export type { PrismaProvider } from "./types/prisma-provider.type.js";
+export type { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";

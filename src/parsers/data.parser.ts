@@ -14,6 +14,8 @@ function omitKey(item: PlainObject, key: string): PlainObject {
     return clone;
 }
 
+const DEFAULT_RESTRICTION = "add";
+
 function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; withoutPk: PlainObject[] } {
     const withPk: PlainObject[] = [];
     const withoutPk: PlainObject[] = [];
@@ -29,6 +31,8 @@ function parseToOneRelation(
     field: PlainObject | null,
     relation: Relation<{}>,
 ): { create?: PlainObject; update?: PlainObject } {
+    const restriction = relation.restriction ?? DEFAULT_RESTRICTION;
+
     if (field === null) {
         if (!relation.nullable) {
             throw new VSRepoAdapterError(
@@ -38,7 +42,7 @@ function parseToOneRelation(
             );
         }
         if (relation.mode === "oto") {
-            if (relation.restriction === "set") {
+            if (restriction === "set") {
                 return { update: { delete: true } };
             }
             return { update: { disconnect: true } };
@@ -47,12 +51,16 @@ function parseToOneRelation(
         return { update: { disconnect: true } };
     }
 
+    if (relation.fkThere !== undefined) {
+        field = omitKey(field, relation.fkThere);
+    }
+
     const pkValue = field[relation.pk];
 
     if (pkValue === undefined) {
         return {
             create: { create: field },
-            update: relation.restriction === "add" ? { create: field } : { upsert: { create: field, update: field } },
+            update: restriction === "add" ? { create: field } : { upsert: { create: field, update: field } },
         };
     }
 
@@ -61,8 +69,14 @@ function parseToOneRelation(
     return {
         create: { connectOrCreate },
         update:
-            relation.restriction === "add"
-                ? { connectOrCreate }
+            restriction === "add"
+                ? {
+                      upsert: {
+                          where: { [relation.pk]: pkValue },
+                          create: field,
+                          update: {},
+                      },
+                  }
                 : {
                       upsert: {
                           where: { [relation.pk]: pkValue },
@@ -77,6 +91,10 @@ function parseToManyRelation(
     field: PlainObject[],
     relation: Relation<{}>,
 ): { create: PlainObject; update: PlainObject } {
+    if (relation.fkThere !== undefined) {
+        field = field.map(f => omitKey(f, relation.fkThere!));
+    }
+
     const { withPk, withoutPk } = splitByPk(field, relation.pk);
 
     const connectOrCreate = withPk.map(item => ({
@@ -95,7 +113,9 @@ function parseToManyRelation(
 
     const create = { create: withoutPk, connectOrCreate };
 
-    if (relation.restriction === "add") {
+    const restriction = relation.restriction ?? DEFAULT_RESTRICTION;
+
+    if (restriction === "add") {
         return {
             create,
             update: relation.mode === "mtm" ? { create: withoutPk, connectOrCreate } : { create: withoutPk, upsert },
@@ -122,9 +142,12 @@ export function parsePrismaWriteData<T>(
     pkName: string,
     relations?: AdapterRelations<T>,
     omitPkInUpdate = false,
+    allowOmitPkWhenNeeded = false,
 ): PrismaWriteData {
-    const create: PlainObject = {};
-    const update: PlainObject = {};
+    let create: PlainObject = {};
+    let update: PlainObject = {};
+
+    const keysToOmit: any[] = [];
 
     for (const [key, field] of Object.entries(obj)) {
         if (field === undefined) continue;
@@ -137,8 +160,10 @@ export function parsePrismaWriteData<T>(
             continue;
         }
 
+        if (relation.fkHere !== undefined) keysToOmit.push(relation.fkHere);
+
         if (relation.mode === "oto" || relation.mode === "mto") {
-            const parsed = parseToOneRelation(field as PlainObject | null, relation);
+            const parsed = parseToOneRelation(field, relation);
             if (parsed.create !== undefined) create[key] = parsed.create;
             if (parsed.update !== undefined) update[key] = parsed.update;
             continue;
@@ -147,6 +172,20 @@ export function parsePrismaWriteData<T>(
         const parsed = parseToManyRelation(field as PlainObject[], relation);
         create[key] = parsed.create;
         update[key] = parsed.update;
+    }
+
+    if (keysToOmit.length) {
+        if (allowOmitPkWhenNeeded) {
+            keysToOmit.push(pkName);
+        } else {
+            // Todo: Melhorar erro
+            throw new Error();
+        }
+
+        for (const key of keysToOmit) {
+            create = omitKey(create, key);
+            update = omitKey(update, key);
+        }
     }
 
     return { create, update };

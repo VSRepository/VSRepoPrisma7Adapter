@@ -7,4 +7,5 @@ import { PrismaProvider } from "./prisma-provider.type.js";
 export type Prisma7GlobalConfig = {
     provider?: PrismaProvider;
     logLevel?: VSLogLevel;
+    allowOmitPk?: boolean;
 };

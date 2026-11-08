@@ -3,7 +3,7 @@
  *
  * @publicApi
  */
-export interface Relation<T = any> {
+export interface Relation<T = any, K = any> {
     /**
      * Cardinality of the relation from the point of view of the entity
      * that owns the field (`oto` = one-to-one, `mto` = many-to-one,
@@ -16,14 +16,20 @@ export interface Relation<T = any> {
      * (matched by `pk`) — `"add"` only creates/connects the items that were
      * sent (upsert per item), `"set"` also removes/disconnects whatever wasn't
      * sent.
+     * @default "add"
      */
-    restriction: "set" | "add";
+    restriction?: "set" | "add";
     /**
      * Name of the field used as the identifier of the related record,
      * used to decide between `create` (no pk in the payload) and
      * `connectOrCreate`/`upsert` (pk present).
      */
     pk: keyof T;
+
+    fkHere?: keyof K;
+
+    fkThere?: keyof T;
+
     /**
      * For `oto`/`mto` relations, whether the field accepts being set
      * to `null`. When `true`, sending `null` on update resolves to `delete`

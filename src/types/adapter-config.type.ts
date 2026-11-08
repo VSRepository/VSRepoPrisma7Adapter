@@ -31,4 +31,6 @@ export interface Prisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Pri
     provider?: PrismaProvider;
     /** Minimum log level for the adapter's internal `VSLogger`. @default VSLogLevel.WARN */
     logLevel?: VSLogLevel;
+
+    allowOmitPk?: boolean;
 }
