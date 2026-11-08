@@ -40,6 +40,11 @@ function rel(
     return { mode, restriction, pk: "id", ...extra };
 }
 
+/** Relation whose FK lives in the entity itself (e.g. `Address.user`, with `Address.userId`). */
+function ownerRel(fkHere: string, extra: Partial<Relation> = {}): Relation<any> {
+    return rel("mto", "add", { fkHere, ...extra });
+}
+
 describe("parsePrismaWriteData", () => {
     describe("plain fields", () => {
         it("should return empty create/update for an empty object", () => {
@@ -243,10 +248,44 @@ describe("parsePrismaWriteData", () => {
                 expect(result.create).toEqual({ address: { connectOrCreate } });
             });
 
-            it("should resolve to connectOrCreate on update when restriction is 'add'", () => {
+            it("should resolve to connectOrCreate on update when restriction is 'add' and mode is 'mto'", () => {
                 const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto", "add") }));
 
                 expect(result.update).toEqual({ address: { connectOrCreate } });
+            });
+
+            it("should resolve to upsert with an empty update on update when restriction is 'add' and mode is 'oto'", () => {
+                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("oto", "add") }));
+
+                expect(result.update).toEqual({
+                    address: { upsert: { where: { id: "10" }, create: address, update: {} } },
+                });
+            });
+
+            it("should default to the 'add' resolution when restriction is omitted", () => {
+                const asMto = parsePrismaWriteData(
+                    { address },
+                    "id",
+                    relations({ address: { mode: "mto", pk: "id" } }),
+                );
+                const asOto = parsePrismaWriteData(
+                    { address },
+                    "id",
+                    relations({ address: { mode: "oto", pk: "id" } }),
+                );
+
+                expect(asMto.update).toEqual({ address: { connectOrCreate } });
+                expect(asOto.update).toEqual({
+                    address: { upsert: { where: { id: "10" }, create: address, update: {} } },
+                });
+            });
+
+            it("should resolve to upsert on update when restriction is 'set', for oto and mto alike", () => {
+                const asMto = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto", "set") }));
+                const asOto = parsePrismaWriteData({ address }, "id", relations({ address: rel("oto", "set") }));
+
+                expect(asMto.update).toEqual(asOto.update);
+                expect(asMto.update.address).toHaveProperty("upsert");
             });
 
             it("should resolve to upsert (without pk in update) on update when restriction is 'set'", () => {
@@ -297,10 +336,18 @@ describe("parsePrismaWriteData", () => {
                 const connectOrCreateNull = { where: { id: null }, create: nullPk };
 
                 const add = parsePrismaWriteData({ address: nullPk }, "id", relations({ address: rel("mto", "add") }));
+                const addOto = parsePrismaWriteData(
+                    { address: nullPk },
+                    "id",
+                    relations({ address: rel("oto", "add") }),
+                );
                 const set = parsePrismaWriteData({ address: nullPk }, "id", relations({ address: rel("mto", "set") }));
 
                 expect(add.create).toEqual({ address: { connectOrCreate: connectOrCreateNull } });
                 expect(add.update).toEqual({ address: { connectOrCreate: connectOrCreateNull } });
+                expect(addOto.update).toEqual({
+                    address: { upsert: { where: { id: null }, create: nullPk, update: {} } },
+                });
                 expect(set.update).toEqual({
                     address: { upsert: { where: { id: null }, create: nullPk, update: { street: "Rua A" } } },
                 });
@@ -589,6 +636,247 @@ describe("parsePrismaWriteData", () => {
 
             expect(result.update).not.toHaveProperty("id");
             expect(result.update.posts.upsert[0].where).toEqual({ id: "2" });
+        });
+    });
+
+    describe("default restriction", () => {
+        const address = { street: "Rua A" };
+
+        it("should default to 'add' for a to-one relation when restriction is omitted", () => {
+            const result = parsePrismaWriteData({ address }, "id", relations({ address: { mode: "mto", pk: "id" } }));
+
+            expect(result.update).toEqual({ address: { create: address } });
+        });
+
+        it("should default to 'add' for a to-many relation when restriction is omitted", () => {
+            const result = parsePrismaWriteData(
+                { posts: [{ id: "1", title: "A" }] },
+                "id",
+                relations({ posts: { mode: "otm", pk: "id" } }),
+            );
+
+            expect(result.update.posts).not.toHaveProperty("deleteMany");
+        });
+
+        it("should default to 'add' when sending null to a nullable oto", () => {
+            const result = parsePrismaWriteData(
+                { address: null },
+                "id",
+                relations({ address: { mode: "oto", pk: "id", nullable: true } }),
+            );
+
+            expect(result.update).toEqual({ address: { disconnect: true } });
+        });
+    });
+
+    describe("fkThere (FK in the related entity)", () => {
+        it("should strip fkThere from a to-one payload without pk", () => {
+            const result = parsePrismaWriteData(
+                { address: { street: "Rua A", userId: "1" } },
+                "id",
+                relations({ address: rel("oto", "add", { fkThere: "userId" }) }),
+            );
+
+            expect(result.create).toEqual({ address: { create: { street: "Rua A" } } });
+            expect(result.update).toEqual({ address: { create: { street: "Rua A" } } });
+        });
+
+        it("should strip fkThere from a to-one payload with pk", () => {
+            const result = parsePrismaWriteData(
+                { address: { id: "10", street: "Rua A", userId: "1" } },
+                "id",
+                relations({ address: rel("oto", "set", { fkThere: "userId" }) }),
+            );
+            const address = { id: "10", street: "Rua A" };
+
+            expect(result.create).toEqual({ address: { connectOrCreate: { where: { id: "10" }, create: address } } });
+            expect(result.update).toEqual({
+                address: { upsert: { where: { id: "10" }, create: address, update: { street: "Rua A" } } },
+            });
+        });
+
+        it("should strip fkThere from every item of a to-many payload", () => {
+            const result = parsePrismaWriteData(
+                {
+                    posts: [
+                        { id: "1", title: "A", authorId: "1" },
+                        { title: "B", authorId: "1" },
+                    ],
+                },
+                "id",
+                relations({ posts: rel("otm", "add", { fkThere: "authorId" }) }),
+            );
+
+            expect(result.create.posts).toEqual({
+                create: [{ title: "B" }],
+                connectOrCreate: [{ where: { id: "1" }, create: { id: "1", title: "A" } }],
+            });
+            expect(result.update.posts).toEqual({
+                create: [{ title: "B" }],
+                upsert: [{ where: { id: "1" }, create: { id: "1", title: "A" }, update: { title: "A" } }],
+            });
+        });
+
+        it("should not mutate the original related payload", () => {
+            const address = { street: "Rua A", userId: "1" };
+
+            parsePrismaWriteData({ address }, "id", relations({ address: rel("oto", "add", { fkThere: "userId" }) }));
+
+            expect(address).toEqual({ street: "Rua A", userId: "1" });
+        });
+
+        it("should not require allowOmitPk nor touch the primary key", () => {
+            const result = parsePrismaWriteData(
+                { id: "1", address: { street: "Rua A", userId: "1" } },
+                "id",
+                relations({ address: rel("oto", "add", { fkThere: "userId" }) }),
+            );
+
+            expect(result.create).toHaveProperty("id", "1");
+            expect(result.update).toHaveProperty("id", "1");
+        });
+    });
+
+    describe("fkHere (FK in the entity itself)", () => {
+        const user = { email: "a@a.com", name: "A" };
+
+        it("should drop the fkHere field from create and update when the relation is in the payload", () => {
+            const result = parsePrismaWriteData(
+                { street: "Rua A", userId: "1", user },
+                "id",
+                relations({ user: ownerRel("userId") }),
+            );
+
+            expect(result.create).toEqual({ street: "Rua A", user: { create: user } });
+            expect(result.update).toEqual({ street: "Rua A", user: { create: user } });
+        });
+
+        it("should drop fkHere even when the relation comes before it in the payload", () => {
+            const result = parsePrismaWriteData({ user, userId: "1" }, "id", relations({ user: ownerRel("userId") }));
+
+            expect(result.create).not.toHaveProperty("userId");
+            expect(result.update).not.toHaveProperty("userId");
+        });
+
+        it("should keep the fkHere field when the relation is not in the payload", () => {
+            const result = parsePrismaWriteData(
+                { id: "1", street: "Rua A", userId: "1" },
+                "id",
+                relations({ user: ownerRel("userId") }),
+            );
+
+            expect(result.create).toEqual({ id: "1", street: "Rua A", userId: "1" });
+            expect(result.update).toEqual({ id: "1", street: "Rua A", userId: "1" });
+        });
+
+        it("should keep the fkHere field when the relation is undefined", () => {
+            const result = parsePrismaWriteData(
+                { street: "Rua A", userId: "1", user: undefined },
+                "id",
+                relations({ user: ownerRel("userId") }),
+            );
+
+            expect(result.create).toEqual({ street: "Rua A", userId: "1" });
+        });
+
+        it("should drop every fkHere field when there are several owner relations", () => {
+            const result = parsePrismaWriteData(
+                { userId: "1", user, groupId: "2", group: { name: "G" } },
+                "id",
+                relations({ user: ownerRel("userId"), group: ownerRel("groupId") }),
+            );
+
+            expect(Object.keys(result.create).sort()).toEqual(["group", "user"]);
+            expect(Object.keys(result.update).sort()).toEqual(["group", "user"]);
+        });
+
+        describe("primary key", () => {
+            const payload = { id: "114", street: "Rua A", userId: "1", user: { id: "1", ...user } };
+            const config = relations({ user: ownerRel("userId") });
+
+            it("should throw INVALID_DATA when the payload has the pk and allowOmitPk is not enabled", () => {
+                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(VSRepoAdapterError);
+                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(
+                    expect.objectContaining({ code: AdapterErrorCode.INVALID_DATA }),
+                );
+            });
+
+            it("should explain the problem and how to solve it in the error message", () => {
+                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(
+                    /primary key 'id'.*'user'.*allowOmitPk.*setGlobalConfig.*database-generated/s,
+                );
+            });
+
+            it("should list every owner relation in the error message", () => {
+                const both = { ...payload, group: { name: "G" } };
+                const bothConfig = relations({ user: ownerRel("userId"), group: ownerRel("groupId") });
+
+                expect(() => parsePrismaWriteData(both, "id", bothConfig)).toThrow(/'user', 'group'/);
+            });
+
+            it("should throw even when omitPkInUpdate is true (the pk is still in create)", () => {
+                expect(() => parsePrismaWriteData(payload, "id", config, true)).toThrow(VSRepoAdapterError);
+            });
+
+            it("should throw when the owner relation is null and the pk is present", () => {
+                const nullable = relations({ user: ownerRel("userId", { nullable: true }) });
+
+                expect(() => parsePrismaWriteData({ id: "114", user: null }, "id", nullable)).toThrow(
+                    expect.objectContaining({ code: AdapterErrorCode.INVALID_DATA }),
+                );
+            });
+
+            it("should not throw when the payload has no pk", () => {
+                const { id: _id, ...withoutPk } = payload;
+
+                expect(() => parsePrismaWriteData(withoutPk, "id", config)).not.toThrow();
+            });
+
+            it("should not throw when the pk is undefined", () => {
+                expect(() => parsePrismaWriteData({ ...payload, id: undefined }, "id", config)).not.toThrow();
+            });
+
+            it("should not throw when the pk is present but the owner relation is not in the payload", () => {
+                const result = parsePrismaWriteData({ id: "114", street: "Rua A", userId: "1" }, "id", config);
+
+                expect(result.create).toEqual({ id: "114", street: "Rua A", userId: "1" });
+            });
+
+            it("should drop the pk and the fkHere field from create and update when allowOmitPk is enabled", () => {
+                const result = parsePrismaWriteData(payload, "id", config, false, true);
+
+                expect(result.create).toEqual({
+                    street: "Rua A",
+                    user: { connectOrCreate: { where: { id: "1" }, create: { id: "1", ...user } } },
+                });
+                expect(result.update).toEqual({
+                    street: "Rua A",
+                    user: { connectOrCreate: { where: { id: "1" }, create: { id: "1", ...user } } },
+                });
+            });
+
+            it("should drop the pk from create (and keep it out of update) with omitPkInUpdate and allowOmitPk", () => {
+                const result = parsePrismaWriteData(payload, "id", config, true, true);
+
+                expect(result.create).not.toHaveProperty("id");
+                expect(result.update).not.toHaveProperty("id");
+                expect(result.create).not.toHaveProperty("userId");
+            });
+
+            it("should only drop the entity pk, not the pk of the related record", () => {
+                const result = parsePrismaWriteData(payload, "id", config, false, true);
+
+                expect(result.create.user.connectOrCreate.where).toEqual({ id: "1" });
+                expect(result.create.user.connectOrCreate.create).toHaveProperty("id", "1");
+            });
+
+            it("should not mutate the original payload", () => {
+                const original = { ...payload };
+
+                parsePrismaWriteData(original, "id", config, false, true);
+
+                expect(original).toEqual(payload);
+            });
         });
     });
 });

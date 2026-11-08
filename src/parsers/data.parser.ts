@@ -14,6 +14,7 @@ function omitKey(item: PlainObject, key: string): PlainObject {
     return clone;
 }
 
+/** Default `restriction` applied when the relation config doesn't set one. */
 const DEFAULT_RESTRICTION = "add";
 
 function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; withoutPk: PlainObject[] } {
@@ -70,13 +71,15 @@ function parseToOneRelation(
         create: { connectOrCreate },
         update:
             restriction === "add"
-                ? {
-                      upsert: {
-                          where: { [relation.pk]: pkValue },
-                          create: field,
-                          update: {},
-                      },
-                  }
+                ? relation.mode === "mto"
+                    ? { connectOrCreate }
+                    : {
+                          upsert: {
+                              where: { [relation.pk]: pkValue },
+                              create: field,
+                              update: {},
+                          },
+                      }
                 : {
                       upsert: {
                           where: { [relation.pk]: pkValue },
@@ -147,7 +150,9 @@ export function parsePrismaWriteData<T>(
     let create: PlainObject = {};
     let update: PlainObject = {};
 
-    const keysToOmit: any[] = [];
+    /** Relation fields that hold their FK in this entity, and those FK fields. */
+    const fkHereRelations: string[] = [];
+    const keysToOmit: string[] = [];
 
     for (const [key, field] of Object.entries(obj)) {
         if (field === undefined) continue;
@@ -160,7 +165,10 @@ export function parsePrismaWriteData<T>(
             continue;
         }
 
-        if (relation.fkHere !== undefined) keysToOmit.push(relation.fkHere);
+        if (relation.fkHere !== undefined) {
+            fkHereRelations.push(key);
+            keysToOmit.push(relation.fkHere as string);
+        }
 
         if (relation.mode === "oto" || relation.mode === "mto") {
             const parsed = parseToOneRelation(field, relation);
@@ -174,12 +182,25 @@ export function parsePrismaWriteData<T>(
         update[key] = parsed.update;
     }
 
-    if (keysToOmit.length) {
-        if (allowOmitPkWhenNeeded) {
+    if (fkHereRelations.length) {
+        if (obj[pkName] !== undefined) {
+            if (!allowOmitPkWhenNeeded) {
+                const fields = fkHereRelations.map(name => `'${name}'`).join(", ");
+
+                throw new VSRepoAdapterError(
+                    `Cannot send the primary key '${pkName}' together with the relation field(s) ${fields}: ` +
+                        `they hold their foreign key in this same entity, and Prisma rejects the primary key ` +
+                        `in a nested write of that kind ("Unknown argument"). ` +
+                        `Either remove '${pkName}' from the payload, or set 'allowOmitPk: true' (in the adapter ` +
+                        `config, or globally through 'setGlobalConfig') so the adapter drops it. Note that, with ` +
+                        `'allowOmitPk', a record that doesn't exist yet is created with a database-generated ` +
+                        `'${pkName}' instead of the one you sent.`,
+                    AdapterErrorCode.INVALID_DATA,
+                    null,
+                );
+            }
+
             keysToOmit.push(pkName);
-        } else {
-            // Todo: Melhorar erro
-            throw new Error();
         }
 
         for (const key of keysToOmit) {

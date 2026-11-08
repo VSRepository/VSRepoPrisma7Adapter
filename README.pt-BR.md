@@ -24,12 +24,15 @@ Implementação de `VSRepoAdapter` para o [VSRepository v3](https://github.com/V
 - [Instalação](#instalação)
 - [Uso básico](#uso-básico)
 - [Config do construtor](#config-do-construtor)
+- [Config global](#config-global)
 - [Relations](#relations)
   - [Os dois `relations`](#os-dois-relations)
   - [`relations` no construtor (escrita)](#relations-no-construtor-escrita)
     - [`mode`](#mode)
     - [`restriction`](#restriction)
     - [`pk` e `nullable`](#pk-e-nullable)
+    - [`fkHere` e `fkThere`](#fkhere-e-fkthere)
+    - [`allowOmitPk`](#allowomitpk)
     - [Como cada método de escrita resolve relations](#como-cada-método-de-escrita-resolve-relations)
   - [`relations` nas options (leitura)](#relations-nas-options-leitura)
 - [Métodos atômicos e de agregação](#métodos-atômicos-e-de-agregação)
@@ -93,6 +96,7 @@ new Prisma7Adapter(prisma, {
     relations: { ... }, // opcional — ver "relations no construtor (escrita)" abaixo
     provider: "postgresql", // opcional — detectado a partir do Prisma Client quando omitido
     logLevel: VSLogLevel.WARN, // opcional — default: VSLogLevel.WARN
+    allowOmitPk: false, // opcional — default: false. Leia "`allowOmitPk`" antes de ativar
 });
 ```
 
@@ -102,7 +106,22 @@ Na construção, o adapter confere o Prisma Client e o model, e resolve o provid
 - um `modelName` sem delegate correspondente no client (`prisma.<modelName>`) lança `MODEL_NOT_FOUND`;
 - o provider vem do `provider`, quando informado; senão é detectado a partir do client gerado (`_engineConfig.activeProvider`, com fallback pro `provider` do driver adapter). Se não for detectável, a construção lança `NOT_SUPPORTED` — nesse caso, informe o `provider` explicitamente (um de `postgresql`, `cockroachdb`, `mysql`, `sqlite`, `sqlserver`).
 
-Os outros campos (`pkName`, `relations`, `logLevel`) são checados só pelo TypeScript, não em runtime.
+Os outros campos (`pkName`, `relations`, `logLevel`, `allowOmitPk`) são checados só pelo TypeScript, não em runtime.
+
+## Config global
+
+`provider`, `logLevel` e `allowOmitPk` podem ser definidos uma vez pra todos os adapters, pelo `setGlobalConfig` estático:
+
+```typescript
+import { VSLogLevel } from "vsrepo";
+import { Prisma7Adapter } from "@vsrepo/prisma7-adapter";
+
+Prisma7Adapter.setGlobalConfig({ logLevel: VSLogLevel.WARN });
+```
+
+- Só afeta adapters criados **depois** da chamada, então chame antes de instanciar seus repositories.
+- Cada chamada **substitui** a config global anterior — não faz merge com ela.
+- Um valor definido na config do próprio adapter sempre vence o global.
 
 ## Relations
 
@@ -113,7 +132,7 @@ O nome `relations` aparece em **dois lugares diferentes** da API, com **formas e
 | | `relations` no **construtor** | `relations` nas **options** |
 | --- | --- | --- |
 | Onde você define | `new Prisma7Adapter(prisma, { relations: ... })` | `repository.get(where, { relations: ... })` — e demais métodos |
-| Formato | Um objeto de **configuração** por campo: `{ mode, restriction, pk, nullable? }` | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }` |
+| Formato | Um objeto de **configuração** por campo: `{ mode, pk, restriction?, nullable?, fkHere?, fkThere? }` | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }` |
 | Propósito | **Escrita** — quando um payload de `create`/`update`/`upsert`/`save` tem campo de relação, diz como transformá-lo num nested write do Prisma (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Leitura** — eager loading: quais relations trazer junto no resultado (vira um `include` do Prisma) |
 | Quem consome | `parsePrismaWriteData` (resolver de escrita) | `parsePrismaInclude` (via `resolveReadArg`) |
 | Precisa da outra? | Não — só afeta escritas | Não — funciona mesmo sem `relations` no construtor |
@@ -151,13 +170,57 @@ Cardinalidade da relation, do ponto de vista da entidade dona do campo:
 
 Controla como `save`/`update`/`upsert` tratam itens de relação que já existem (casados pela `pk`) e, pra relations to-many, itens que **não** vieram no payload:
 
-- **`"add"`** — só cria/conecta/faz upsert dos itens enviados. Itens já existentes que não estão no payload permanecem intocados.
+- **`"add"`** (default, quando `restriction` é omitido) — só cria/conecta/faz upsert dos itens enviados. Itens já existentes que não estão no payload permanecem intocados. Numa relation to-one que aponta pra um registro com `pk`, o `update` resolve diferente por `mode`:
+  - `mto` → `connectOrCreate`: o registro é conectado ao relacionado (criado se não existir), então ele pode ser **movido pra outro pai já existente**. Um relacionado existente nunca é sobrescrito.
+  - `oto` → `upsert` aninhado com `update` vazio: o relacionado é criado se não existir e nunca é sobrescrito, e enviar o **mesmo** relacionado de novo não faz nada. Mover um `oto` pra um registro *diferente* já existente não é suportado por essa resolução (falha com `UNIQUE_CONSTRAINT_VIOLATION`).
 - **`"set"`** — igual a `"add"`, mas também remove o que não foi enviado: em `otm` roda um `deleteMany` nos itens que faltam no array; em `mtm` reseta o vínculo (`set: []`) antes de reconectar; em `oto`/`mto` com `nullable: true`, enviar `null` apaga/desconecta a relation (ver abaixo).
 
 #### `pk` e `nullable`
 
 - **`pk`** — o campo usado pra identificar um registro relacionado já existente. Um item **com** `pk` no payload vira um `connectOrCreate`/`upsert`; um item **sem** `pk` vira um `create` simples.
 - **`nullable`** — relevante pras relações to-one `oto`/`mto`. Quando `true`, enviar `null` no campo resolve pra `disconnect` no update (`delete` no caso de `oto` com `restriction: "set"` — um lado `oto` não dá só pra "desconectar", a linha possuída é removida). Quando omitido/`false`, enviar `null` numa relação to-one lança um `VSRepoAdapterError` (code `INVALID_DATA`) avisando que a relation não é nullable.
+
+#### `fkHere` e `fkThere`
+
+Numa relation one-to-one ou many-to-one, só um dos lados guarda a coluna da foreign key. Em `Address.user`, é a `Address.userId`. Informe ao adapter em qual lado cada entidade está:
+
+| Entidade | Campo da relation | Guarda a FK? | Config |
+| --- | --- | --- | --- |
+| `Address` (lado dono) | `user` | **sim** — `userId` é uma coluna de `Address` | `fkHere: "userId"` |
+| `User` (lado inverso) | `address` | não — a FK fica na entidade relacionada (`Address`) | `fkThere: "userId"` |
+
+```typescript
+// UserRepository
+relations: { address: { mode: "oto", pk: "id", fkThere: "userId" } }
+
+// AddressRepository
+relations: { user: { mode: "oto", pk: "id", fkHere: "userId" } }
+```
+
+- **`fkThere`** — nome da FK que fica na entidade **relacionada**. Um objeto relacionado carregado com `get`/`find` normalmente a traz (`address: { id, street, userId }`), mas a relation já define esse valor, e o Prisma não aceita ela dentro do nested write. O adapter remove a FK do(s) payload(s) relacionado(s) antes de montar a escrita.
+- **`fkHere`** — nome da FK que fica **nesta** entidade. O Prisma não aceita a FK escalar junto do objeto de relation, então, quando o campo da relation está no payload, o adapter remove esse campo do `create` e do `update`. Um payload que traz só a FK escalar (sem o objeto de relation) fica como está.
+
+O `fkHere` tem mais uma consequência, pra primary key — leia a próxima seção.
+
+#### `allowOmitPk`
+
+`allowOmitPk` é uma opção do adapter (também dá pra definir na [config global](#config-global)), mas só importa pra relations configuradas com `fkHere`.
+
+**O problema.** Pegue um `Address` carregado junto com o `user` (`relations: { user: true }`) e enviado de volta pro `save`. O payload tem a primary key (`id`) **e** uma relation que guarda a FK na própria entidade. Com o objeto de relation presente, o Prisma não aceita nem a FK escalar nem a primary key (`Unknown argument 'id'`), então o adapter não consegue enviar tudo.
+
+**O que o adapter faz:**
+
+- **`allowOmitPk: false`** (default) — lança um `VSRepoAdapterError` (`INVALID_DATA`) **antes** de tocar no banco, explicando o que fazer. Payloads sem primary key (um `create` simples, por exemplo) ou sem o objeto de relation não são afetados.
+- **`allowOmitPk: true`** — remove a primary key do `create` e do `update`. Registros que já existem continuam sendo achados pelo `where: { id }`, então **os updates funcionam normalmente**. O porém é o ramo `create` do `save`: se o registro ainda não existe, ele é criado com uma **primary key gerada pelo banco, e não a que você enviou** — e nada te avisa disso.
+
+**Quando ativar.** Só se for realmente necessário, e só se não for a sua aplicação que gerencia os ids — ou seja, o banco os gera (`autoincrement`, defaults `uuid()`/`cuid()`, sequences...). Se a aplicação atribui os ids (UUIDs gerados no client, ids importados de outro sistema, ids que outros registros já referenciam), mantenha **desativado**: um registro que não existe seria gravado, sem aviso, com outro id.
+
+**Formas de contornar, sem `allowOmitPk`:**
+
+1. **Enviar a FK escalar no lugar do objeto de relation.** `address.save({ id, city, userId })` mantém `id` e `userId`, já que não há objeto de relation. Persista a entidade relacionada por conta própria (pelo repository dela) quando ela também mudou — de preferência numa só `transaction`.
+2. **Enviar só o que mudou.** `address.update({ id }, { city })` não carrega nem a primary key nem a relation.
+3. **Salvar pelo outro lado.** `user.save({ ...user, address })` mantém as primary keys (configure o `fkThere` lá): a FK fica em `Address`, então `User` não tem FK própria pra conflitar.
+4. **Deixar o banco gerar a key dos registros novos.** Não envie `id` ao criar: `address.create({ city, user })`.
 
 #### Como cada método de escrita resolve relations
 
@@ -298,6 +361,6 @@ O adapter usa o `VSLogger` (de `vsrepo`) internamente: todo método loga uma lin
 ## Requisitos
 
 - `vsrepo` ^3.0.0-dev.2
-- `@prisma/client` ^7.10.0
+- `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - Um banco PostgreSQL, CockroachDB, MySQL, SQLite ou SQL Server (todos cobertos pelos testes de integração)

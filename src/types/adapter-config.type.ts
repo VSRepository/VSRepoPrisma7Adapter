@@ -31,6 +31,20 @@ export interface Prisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Pri
     provider?: PrismaProvider;
     /** Minimum log level for the adapter's internal `VSLogger`. @default VSLogLevel.WARN */
     logLevel?: VSLogLevel;
-
+    /**
+     * Lets the adapter drop the primary key from a write payload when it can't
+     * be sent. That happens when the payload has a relation that holds its
+     * foreign key in this same entity (`fkHere`, e.g. `Address.user`): Prisma
+     * doesn't accept the primary key in that kind of nested write. When `false`,
+     * such a payload throws `INVALID_DATA`.
+     *
+     * **Careful:** with this on, `save` with a primary key that doesn't exist
+     * yet creates the record with a database-generated key, not the one you
+     * sent. Only enable it if you really need it and if the database (not your
+     * application) generates the ids. Falls back to the global config
+     * (`setGlobalConfig`) when omitted.
+     *
+     * @default false
+     */
     allowOmitPk?: boolean;
 }

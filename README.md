@@ -24,12 +24,15 @@
 - [Installation](#installation)
 - [Basic usage](#basic-usage)
 - [Constructor config](#constructor-config)
+- [Global config](#global-config)
 - [Relations](#relations)
   - [The two `relations`](#the-two-relations)
   - [`relations` in the constructor (write)](#relations-in-the-constructor-write)
     - [`mode`](#mode)
     - [`restriction`](#restriction)
     - [`pk` and `nullable`](#pk-and-nullable)
+    - [`fkHere` and `fkThere`](#fkhere-and-fkthere)
+    - [`allowOmitPk`](#allowomitpk)
     - [How each write method resolves relations](#how-each-write-method-resolves-relations)
   - [`relations` in method options (read)](#relations-in-method-options-read)
 - [Atomic and aggregation methods](#atomic-and-aggregation-methods)
@@ -93,6 +96,7 @@ new Prisma7Adapter(prisma, {
     relations: { ... }, // optional — see "relations in the constructor (write)" below
     provider: "postgresql", // optional — detected from the Prisma Client when omitted
     logLevel: VSLogLevel.WARN, // optional — default: VSLogLevel.WARN
+    allowOmitPk: false, // optional — default: false. Read "`allowOmitPk`" before turning it on
 });
 ```
 
@@ -102,7 +106,22 @@ At construction, the adapter checks the Prisma Client and the model, and resolve
 - a `modelName` with no matching delegate on the client (`prisma.<modelName>`) throws `MODEL_NOT_FOUND`;
 - the provider comes from `provider` when set; otherwise it's detected from the generated client (`_engineConfig.activeProvider`, falling back to the driver adapter's `provider`). If it can't be detected, construction throws `NOT_SUPPORTED` — set `provider` explicitly in that case (one of `postgresql`, `cockroachdb`, `mysql`, `sqlite`, `sqlserver`).
 
-The other fields (`pkName`, `relations`, `logLevel`) are checked by TypeScript only, not at runtime.
+The other fields (`pkName`, `relations`, `logLevel`, `allowOmitPk`) are checked by TypeScript only, not at runtime.
+
+## Global config
+
+`provider`, `logLevel` and `allowOmitPk` can be set once for every adapter, through the static `setGlobalConfig`:
+
+```typescript
+import { VSLogLevel } from "vsrepo";
+import { Prisma7Adapter } from "@vsrepo/prisma7-adapter";
+
+Prisma7Adapter.setGlobalConfig({ logLevel: VSLogLevel.WARN });
+```
+
+- It only affects adapters created **after** the call, so call it before instantiating your repositories.
+- Each call **replaces** the previous global config — it doesn't merge with it.
+- A value set in an adapter's own config always wins over the global one.
 
 ## Relations
 
@@ -113,7 +132,7 @@ The name `relations` appears in **two different places** in the API, with **diff
 | | `relations` in the **constructor** | `relations` in **method options** |
 | --- | --- | --- |
 | Where you define it | `new Prisma7Adapter(prisma, { relations: ... })` | `repository.get(where, { relations: ... })` — and other methods |
-| Shape | One **config object** per field: `{ mode, restriction, pk, nullable? }` | One **`true`/sub-object** per field: `{ posts: true }` |
+| Shape | One **config object** per field: `{ mode, pk, restriction?, nullable?, fkHere?, fkThere? }` | One **`true`/sub-object** per field: `{ posts: true }` |
 | Purpose | **Write** — when a `create`/`update`/`upsert`/`save` payload contains a relation field, tells the adapter how to turn it into a Prisma nested write (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Read** — eager loading: which relations to fetch alongside the result (becomes a Prisma `include`) |
 | Consumed by | `parsePrismaWriteData` (write resolver) | `parsePrismaInclude` (via `resolveReadArg`) |
 | Depends on the other? | No — it only affects writes | No — it works even with no `relations` in the constructor |
@@ -151,13 +170,57 @@ Cardinality of the relation, from the point of view of the entity that owns the 
 
 Controls how `save`/`update`/`upsert` handle relation items that already exist (matched by `pk`) and, for to-many relations, items that were **not** included in the payload:
 
-- **`"add"`** — only creates/connects/upserts the items you send. Existing items that aren't in the payload are left untouched.
+- **`"add"`** (default, when `restriction` is omitted) — only creates/connects/upserts the items you send. Existing items that aren't in the payload are left untouched. For a to-one relation that points to a record with `pk`, `update` resolves differently per `mode`:
+  - `mto` → `connectOrCreate`: the record is connected to the related one (created if missing), so it can be **moved to another existing parent**. An existing related record is never overwritten.
+  - `oto` → nested `upsert` with an empty `update`: the related record is created if missing and never overwritten, and sending the **same** related record again is a no-op. Moving an `oto` to a *different* existing record is not supported by this resolution (it fails with `UNIQUE_CONSTRAINT_VIOLATION`).
 - **`"set"`** — same as `"add"`, but also removes what wasn't sent: for `otm` it runs a `deleteMany` on the items missing from the array; for `mtm` it resets the join (`set: []`) before reconnecting; for `oto`/`mto` with `nullable: true`, sending `null` deletes/disconnects the relation (see below).
 
 #### `pk` and `nullable`
 
 - **`pk`** — the field used to identify an existing related record. An item **with** `pk` in the payload becomes a `connectOrCreate`/`upsert`; an item **without** it becomes a plain `create`.
 - **`nullable`** — relevant for `oto`/`mto` to-one relations. When `true`, sending `null` for the field resolves to `disconnect` on update (`delete` instead for `oto` with `restriction: "set"` — an `oto` side can't just be "disconnected", the owned row is removed). When omitted/`false`, sending `null` for a to-one relation throws a `VSRepoAdapterError` (code `INVALID_DATA`) telling you the relation is not nullable.
+
+#### `fkHere` and `fkThere`
+
+In a one-to-one or many-to-one relation, only one side keeps the foreign key column. For `Address.user`, that's `Address.userId`. Tell the adapter which side each entity is on:
+
+| Entity | Relation field | Holds the FK? | Config |
+| --- | --- | --- | --- |
+| `Address` (owner side) | `user` | **yes** — `userId` is a column of `Address` | `fkHere: "userId"` |
+| `User` (inverse side) | `address` | no — the FK lives in the related entity (`Address`) | `fkThere: "userId"` |
+
+```typescript
+// UserRepository
+relations: { address: { mode: "oto", pk: "id", fkThere: "userId" } }
+
+// AddressRepository
+relations: { user: { mode: "oto", pk: "id", fkHere: "userId" } }
+```
+
+- **`fkThere`** — name of the FK that lives in the **related** entity. A related object loaded with `get`/`find` usually carries it (`address: { id, street, userId }`), but the relation already sets it, and Prisma doesn't accept it inside the nested write. The adapter strips it from the related payload(s) before building the write.
+- **`fkHere`** — name of the FK that lives in **this** entity. Prisma doesn't accept the scalar FK together with the relation object, so when the relation field is in the payload the adapter drops this field from `create` and `update`. A payload that carries only the scalar FK (and no relation object) is left as it is.
+
+`fkHere` has one more consequence, for the primary key — read the next section.
+
+#### `allowOmitPk`
+
+`allowOmitPk` is an adapter option (it can also be set in the [global config](#global-config)), but it only matters for relations configured with `fkHere`.
+
+**The problem.** Take an `Address` loaded together with its `user` (`relations: { user: true }`) and sent back to `save`. The payload has the primary key (`id`) **and** a relation that holds its FK in the entity itself. Once the relation object is there, Prisma won't take the scalar FK nor the primary key (`Unknown argument 'id'`), so the adapter can't send everything.
+
+**What the adapter does:**
+
+- **`allowOmitPk: false`** (default) — throws a `VSRepoAdapterError` (`INVALID_DATA`) **before** touching the database, explaining what to do. Payloads without a primary key (e.g. a plain `create`), or without the relation object, are not affected.
+- **`allowOmitPk: true`** — drops the primary key from `create` and `update`. Records that already exist are still found through `where: { id }`, so **updates work normally**. The catch is the `create` branch of `save`: if the record doesn't exist yet, it is created with a **database-generated primary key, not the one you sent** — and nothing warns you.
+
+**When to turn it on.** Only if you really need it, and only if it's not your application that manages the ids — i.e. the database generates them (`autoincrement`, `uuid()`/`cuid()` defaults, sequences...). If your application assigns the ids (client-generated UUIDs, ids imported from another system, ids that other records already reference), keep it **off**: a record that doesn't exist would silently be stored under a different id.
+
+**Ways around it, without `allowOmitPk`:**
+
+1. **Send the scalar FK instead of the relation object.** `address.save({ id, city, userId })` keeps both `id` and `userId`, since there's no relation object. Persist the related entity on its own (through its repository) when it also changed — ideally in one `transaction`.
+2. **Send only what changed.** `address.update({ id }, { city })` carries neither the primary key nor the relation.
+3. **Save from the other side.** `user.save({ ...user, address })` keeps the primary keys (configure `fkThere` there): the FK lives in `Address`, so `User` has no FK of its own to conflict with.
+4. **Let the database generate the key for new records.** Don't send `id` when creating: `address.create({ city, user })`.
 
 #### How each write method resolves relations
 
@@ -298,6 +361,6 @@ The adapter uses `VSLogger` (from `vsrepo`) internally: every method logs a `DEB
 ## Requirements
 
 - `vsrepo` ^3.0.0-dev.2
-- `@prisma/client` ^7.10.0
+- `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - A PostgreSQL, CockroachDB, MySQL, SQLite or SQL Server database (all covered by the integration tests)

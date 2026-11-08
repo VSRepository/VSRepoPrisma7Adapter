@@ -51,6 +51,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private readonly relations?: AdapterRelations<T>;
     private readonly logger: VSLogger;
     private readonly provider: PrismaProvider;
+    /** Whether the primary key may be dropped from a write payload when Prisma can't take it. */
     private readonly allowOmitPk?: boolean;
 
     private static globalConfig: Prisma7GlobalConfig = {};
@@ -80,6 +81,11 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         );
     }
 
+    /**
+     * Sets defaults (`provider`, `logLevel`, `allowOmitPk`) for every adapter
+     * created **after** this call. It replaces the previous global config, and
+     * the config passed to each adapter's constructor takes precedence.
+     */
     static setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
         this.globalConfig = globalConfig;
     }
@@ -351,6 +357,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         }
     }
 
+    /** Runs `parsePrismaWriteData` with this adapter's `pkName`, `relations` and `allowOmitPk`. */
     private parseData(obj: any, omitPkInUpdate?: boolean) {
         return parsePrismaWriteData(obj, this.pkName, this.relations, omitPkInUpdate, this.allowOmitPk);
     }

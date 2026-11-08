@@ -6,6 +6,46 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased] - 2026-11-08
+
+### Added
+- **`VSRepoPrisma7Adapter.setGlobalConfig`** (static) — sets defaults (`provider`, `logLevel`, `allowOmitPk`) for every adapter created after the call. Each call replaces the previous global config, and the adapter's own config always wins. The `Prisma7GlobalConfig` type is exported
+- **`fkHere` and `fkThere` in the `relations` config** — tell the adapter which side of a to-one relation keeps the foreign key. `fkThere` (FK in the related entity) is stripped from the related payload(s) before the nested write is built; `fkHere` (FK in the entity itself) is dropped from `create`/`update` when the relation is in the payload, since Prisma doesn't accept the scalar FK next to the relation object
+- **`allowOmitPk` option** (adapter config and global config) — lets the adapter drop the primary key from a write that also has an `fkHere` relation. Off by default: read the README before enabling it, since a record that doesn't exist yet is then created with a database-generated key instead of the one you sent
+- JSDoc for `fkHere`, `fkThere`, `allowOmitPk`, `setGlobalConfig`, `Prisma7GlobalConfig` and `parsePrismaWriteData`; README (EN and pt-BR) sections on the global config, `fkHere`/`fkThere` and `allowOmitPk` (what it is for, when to turn it on, and how to work around it)
+
+### Changed
+- **`restriction` is now optional and defaults to `"add"`**
+- **A one-to-one (`oto`) relation with the related `pk` and `restriction: "add"` now resolves `update` to a nested `upsert` with an empty `update`** (it was a `connectOrCreate`): the related record is created if missing, never overwritten, and sending the same one again is a no-op. Many-to-one (`mto`) keeps `connectOrCreate`, so a record can still be moved to another existing parent. Moving an `oto` to a different existing record is not supported (`UNIQUE_CONSTRAINT_VIOLATION`)
+- A write whose payload has the primary key **and** an `fkHere` relation now throws `INVALID_DATA` (a `VSRepoAdapterError` explaining `allowOmitPk`) instead of being sent to Prisma, unless `allowOmitPk` is enabled. Payloads without the primary key are not affected
+- The `@prisma/client` peer dependency is now `^7.10.1` (was `^7.10.0`)
+
+### Fixed
+- **`save`/`create`/`update` failed with Prisma's `Unknown argument` validation error on to-one relations whose foreign key lives in the entity itself** (e.g. saving an `Address` loaded with its `user`), because the payload mixed the scalar FK and the primary key with the relation object. Relations configured with `fkHere`/`fkThere` now build a valid nested write
+- Unit tests updated for the changes above, and integration tests added for relations with `fkHere`/`fkThere` and for `allowOmitPk`
+
+---
+
+## [Unreleased] - 2026-11-08 (Português)
+
+### Adicionado
+- **`VSRepoPrisma7Adapter.setGlobalConfig`** (estático) — define defaults (`provider`, `logLevel`, `allowOmitPk`) pra todo adapter criado depois da chamada. Cada chamada substitui a config global anterior, e a config do próprio adapter sempre vence. O tipo `Prisma7GlobalConfig` é exportado
+- **`fkHere` e `fkThere` na config `relations`** — informam ao adapter qual lado de uma relation to-one guarda a foreign key. O `fkThere` (FK na entidade relacionada) é removido do(s) payload(s) relacionado(s) antes de montar o nested write; o `fkHere` (FK na própria entidade) é removido do `create`/`update` quando a relation está no payload, já que o Prisma não aceita a FK escalar junto do objeto de relation
+- **Opção `allowOmitPk`** (config do adapter e config global) — permite que o adapter remova a primary key de uma escrita que também tem uma relation `fkHere`. Desativada por padrão: leia o README antes de ativar, pois um registro que ainda não existe passa a ser criado com uma key gerada pelo banco, e não a que você enviou
+- JSDoc de `fkHere`, `fkThere`, `allowOmitPk`, `setGlobalConfig`, `Prisma7GlobalConfig` e `parsePrismaWriteData`; seções nos READMEs (EN e pt-BR) sobre a config global, `fkHere`/`fkThere` e `allowOmitPk` (pra que serve, quando ativar e como contornar)
+
+### Alterado
+- **`restriction` agora é opcional e o default é `"add"`**
+- **Uma relation one-to-one (`oto`) com a `pk` do relacionado e `restriction: "add"` agora resolve o `update` pra um `upsert` aninhado com `update` vazio** (era um `connectOrCreate`): o relacionado é criado se não existir, nunca é sobrescrito, e enviar o mesmo de novo não faz nada. A many-to-one (`mto`) continua com `connectOrCreate`, então um registro ainda pode ser movido pra outro pai já existente. Mover um `oto` pra um registro diferente já existente não é suportado (`UNIQUE_CONSTRAINT_VIOLATION`)
+- Uma escrita cujo payload tem a primary key **e** uma relation `fkHere` agora lança `INVALID_DATA` (um `VSRepoAdapterError` explicando o `allowOmitPk`) em vez de ser enviada ao Prisma, a menos que `allowOmitPk` esteja ativado. Payloads sem a primary key não são afetados
+- A peer dependency `@prisma/client` agora é `^7.10.1` (era `^7.10.0`)
+
+### Corrigido
+- **`save`/`create`/`update` falhavam com o erro de validação `Unknown argument` do Prisma em relations to-one cuja foreign key fica na própria entidade** (ex.: salvar um `Address` carregado com seu `user`), porque o payload misturava a FK escalar e a primary key com o objeto de relation. Relations configuradas com `fkHere`/`fkThere` agora montam um nested write válido
+- Testes unitários atualizados pras mudanças acima, e testes de integração adicionados pra relations com `fkHere`/`fkThere` e pro `allowOmitPk`
+
+---
+
 ## [2.0.0-dev] - 2026-10-29
 
 > Development version of the adapter for **VSRepository v3** (`vsrepo` `^3.0.0-dev.2`). The 1.x line keeps targeting VSRepository v2.

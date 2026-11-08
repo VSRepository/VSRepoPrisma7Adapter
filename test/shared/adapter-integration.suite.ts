@@ -44,6 +44,7 @@ interface AddressRow {
     city: string;
     country: string;
     userId: number;
+    user?: UserRow;
 }
 
 interface PostRow {
@@ -53,6 +54,7 @@ interface PostRow {
     published: boolean;
     price: any;
     authorId: number;
+    author?: UserRow;
     tags?: TagRow[];
 }
 
@@ -72,11 +74,22 @@ interface UserRow {
 }
 
 const userRelations: AdapterRelations<UserRow> = {
-    address: { mode: "oto", restriction: "set", pk: "id", nullable: true },
+    address: { mode: "oto", restriction: "set", pk: "id", nullable: true, fkThere: "userId" },
     posts: { mode: "otm", restriction: "set", pk: "id" },
 };
 
+/** `Address` holds the FK (`userId`) in the entity itself, so it is the owner side of the relation. */
+const addressRelations: AdapterRelations<AddressRow> = {
+    user: { mode: "oto", restriction: "add", pk: "id", fkHere: "userId" },
+};
+
+/** Same as `postRelations`, but the `author` relation overwrites the related record (`restriction: "set"`). */
+const postSetRelations: AdapterRelations<PostRow> = {
+    author: { mode: "mto", restriction: "set", pk: "id", fkHere: "authorId" },
+};
+
 const postRelations: AdapterRelations<PostRow> = {
+    author: { mode: "mto", restriction: "add", pk: "id", fkHere: "authorId" },
     tags: { mode: "mtm", restriction: "set", pk: "id" },
 };
 
@@ -90,6 +103,9 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
         let prisma: any;
         let users: VSRepoPrisma7Adapter<UserRow>;
         let posts: VSRepoPrisma7Adapter<PostRow>;
+        let postsSet: VSRepoPrisma7Adapter<PostRow>;
+        let addresses: VSRepoPrisma7Adapter<AddressRow>;
+        let addressesOmitPk: VSRepoPrisma7Adapter<AddressRow>;
         let sequence = 0;
 
         beforeAll(async () => {
@@ -106,6 +122,28 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
                 modelName: "post",
                 pkName: "id",
                 relations: postRelations,
+                logLevel: VSLogLevel.NONE,
+            });
+
+            postsSet = new VSRepoPrisma7Adapter<PostRow>(prisma, {
+                modelName: "post",
+                pkName: "id",
+                relations: postSetRelations,
+                logLevel: VSLogLevel.NONE,
+            });
+
+            addresses = new VSRepoPrisma7Adapter<AddressRow>(prisma, {
+                modelName: "address",
+                pkName: "id",
+                relations: addressRelations,
+                logLevel: VSLogLevel.NONE,
+            });
+
+            addressesOmitPk = new VSRepoPrisma7Adapter<AddressRow>(prisma, {
+                modelName: "address",
+                pkName: "id",
+                relations: addressRelations,
+                allowOmitPk: true,
                 logLevel: VSLogLevel.NONE,
             });
         });
@@ -729,6 +767,192 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
 
                 const stored = await prisma.post.findUnique({ where: { id: post.id }, include: { tags: true } });
                 expect(stored.tags.map((t: TagRow) => t.name)).toEqual(["vue"]);
+            });
+        });
+
+        describe("relations that hold their FK in the entity (fkHere / fkThere)", () => {
+            async function seedUserWithAddress() {
+                const user = await seedUser({
+                    name: "John",
+                    address: { create: { street: "Rua A", city: "Aracaju", country: "BR" } },
+                });
+                const address = await prisma.address.findUnique({ where: { userId: user.id } });
+
+                return { user, address };
+            }
+
+            it("should create the owner record together with its related record, dropping the scalar FK", async () => {
+                const created = await addresses.create({
+                    street: "Rua A",
+                    city: "Aracaju",
+                    country: "BR",
+                    userId: 0,
+                    user: { email: "john@mail.com", name: "John" },
+                });
+
+                const stored = await prisma.address.findUnique({ where: { id: created.id }, include: { user: true } });
+                expect(stored.user).toMatchObject({ email: "john@mail.com", name: "John" });
+                expect(stored.userId).toBe(stored.user.id);
+            });
+
+            it("should save an owner record loaded with its relation when allowOmitPk is enabled", async () => {
+                const { user, address } = await seedUserWithAddress();
+                const loaded = (await addressesOmitPk.findOne({ id: address.id }, { relations: { user: true } }))!;
+                loaded.city = "Estância";
+
+                await addressesOmitPk.save(loaded);
+
+                await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
+                    city: "Estância",
+                    userId: user.id,
+                });
+                await expect(prisma.address.count()).resolves.toBe(1);
+                await expect(prisma.user.count()).resolves.toBe(1);
+            });
+
+            it("should reject INVALID_DATA, leaving the data untouched, when the pk is sent and allowOmitPk is off", async () => {
+                const { address } = await seedUserWithAddress();
+                const loaded = (await addresses.findOne({ id: address.id }, { relations: { user: true } }))!;
+                loaded.city = "Estância";
+
+                const error = await addresses.save(loaded).catch(e => e);
+
+                expect(error).toBeInstanceOf(VSRepoAdapterError);
+                expect(error.code).toBe(AdapterErrorCode.INVALID_DATA);
+                await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
+                    city: "Aracaju",
+                });
+            });
+
+            it("should create the record with a database-generated pk when allowOmitPk drops the one sent", async () => {
+                const john = await seedUser({ name: "John" });
+                const sentId = 987654;
+
+                const saved = await addressesOmitPk.save({
+                    id: sentId,
+                    street: "Rua A",
+                    city: "Aracaju",
+                    country: "BR",
+                    user: { id: john.id, email: john.email },
+                });
+
+                expect(saved.id).not.toBe(sentId);
+                await expect(prisma.address.findUnique({ where: { id: saved.id } })).resolves.toMatchObject({
+                    userId: john.id,
+                });
+            });
+
+            it("should save a record loaded with its to-one relation, stripping the FK that lives in the related entity", async () => {
+                const { user, address } = await seedUserWithAddress();
+                const loaded = (await users.findOne({ id: user.id }, { relations: { address: true } }))!;
+                loaded.name = "Johnny";
+                loaded.address!.city = "Estância";
+
+                await users.save(loaded);
+
+                await expect(prisma.user.findUnique({ where: { id: user.id } })).resolves.toMatchObject({
+                    name: "Johnny",
+                });
+                await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
+                    city: "Estância",
+                    userId: user.id,
+                });
+                await expect(prisma.address.count()).resolves.toBe(1);
+            });
+        });
+
+        describe("re-pointing a many-to-one relation (restriction 'add')", () => {
+            it("should move the record to another existing parent", async () => {
+                const john = await seedUser({ name: "John" });
+                const jane = await seedUser({ name: "Jane" });
+                const post = await seedPost(john.id);
+
+                await posts.update({ id: post.id }, { author: { id: jane.id, email: jane.email } });
+
+                await expect(prisma.post.findUnique({ where: { id: post.id } })).resolves.toMatchObject({
+                    authorId: jane.id,
+                });
+                await expect(prisma.user.count()).resolves.toBe(2);
+            });
+
+            it("should move the record to a new parent created on the fly", async () => {
+                const john = await seedUser({ name: "John" });
+                const post = await seedPost(john.id);
+
+                await posts.update({ id: post.id }, { author: { email: "new@mail.com", name: "New" } });
+
+                const stored = await prisma.post.findUnique({ where: { id: post.id }, include: { author: true } });
+                expect(stored.author).toMatchObject({ email: "new@mail.com" });
+                expect(stored.authorId).not.toBe(john.id);
+            });
+
+            it("should keep the same parent and not overwrite it when it is sent again", async () => {
+                const john = await seedUser({ name: "John" });
+                const post = await seedPost(john.id);
+
+                await posts.update({ id: post.id }, { author: { id: john.id, email: john.email, name: "Changed" } });
+
+                await expect(prisma.post.findUnique({ where: { id: post.id } })).resolves.toMatchObject({
+                    authorId: john.id,
+                });
+                await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
+                    name: "John",
+                });
+            });
+        });
+
+        describe("re-pointing a to-one relation (restriction 'set' and one-to-one)", () => {
+            it("should move the record to another existing parent and overwrite the parent's fields ('set')", async () => {
+                const john = await seedUser({ name: "John" });
+                const jane = await seedUser({ name: "Jane" });
+                const post = await seedPost(john.id);
+
+                await postsSet.update({ id: post.id }, { author: { id: jane.id, email: jane.email, name: "Janet" } });
+
+                await expect(prisma.post.findUnique({ where: { id: post.id } })).resolves.toMatchObject({
+                    authorId: jane.id,
+                });
+                await expect(prisma.user.findUnique({ where: { id: jane.id } })).resolves.toMatchObject({
+                    name: "Janet",
+                });
+                await expect(prisma.user.count()).resolves.toBe(2);
+            });
+
+            it("should keep the same one-to-one parent and not overwrite it when it is sent again ('add')", async () => {
+                const john = await seedUser({ name: "John" });
+                const address = await prisma.address.create({
+                    data: { street: "Rua A", city: "Aracaju", country: "BR", userId: john.id },
+                });
+
+                await addresses.update(
+                    { id: address.id },
+                    { user: { id: john.id, email: john.email, name: "Changed" } },
+                );
+
+                await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
+                    userId: john.id,
+                });
+                await expect(prisma.user.findUnique({ where: { id: john.id } })).resolves.toMatchObject({
+                    name: "John",
+                });
+            });
+
+            it("should not move a one-to-one record to another existing parent ('add' only matches the current one)", async () => {
+                const john = await seedUser({ name: "John" });
+                const jane = await seedUser({ name: "Jane" });
+                const address = await prisma.address.create({
+                    data: { street: "Rua A", city: "Aracaju", country: "BR", userId: john.id },
+                });
+
+                const error = await addresses
+                    .update({ id: address.id }, { user: { id: jane.id, email: jane.email } })
+                    .catch(e => e);
+
+                expect(error).toBeInstanceOf(VSRepoAdapterError);
+                expect(error.code).toBe(AdapterErrorCode.UNIQUE_CONSTRAINT_VIOLATION);
+                await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
+                    userId: john.id,
+                });
             });
         });
 

@@ -71,6 +71,11 @@ const relationsConfig = {
     posts: { mode: "otm", restriction: "add", pk: "id" },
 };
 
+/** `address` holds its FK (`addressId`) in the entity itself. */
+const ownerRelationsConfig = {
+    address: { mode: "mto", restriction: "add", pk: "id", fkHere: "addressId" },
+};
+
 /**
  * Builds the adapter on top of a fake Prisma Client: the root client exposes `$on`
  * (like the real one) and a `$transaction` that hands `tx` (which does NOT expose
@@ -476,6 +481,97 @@ describe("VSRepoPrisma7Adapter", () => {
                 where: { id: "1" },
                 create: { id: "1", address: { connectOrCreate: { where: { id: "10" }, create: address } } },
                 update: { address: { connectOrCreate: { where: { id: "10" }, create: address } } },
+            });
+        });
+
+        describe("relation that holds its FK in the entity (fkHere)", () => {
+            const payload: any = { id: "1", name: "John", addressId: "10", address: { id: "10", street: "Rua A" } };
+
+            afterEach(() => {
+                VSRepoPrisma7Adapter.setGlobalConfig({});
+            });
+
+            it("should drop the FK and save without the pk check when the payload has no pk", async () => {
+                const { adapter, user } = setup({ relations: ownerRelationsConfig });
+                user.create!.mockResolvedValue({});
+
+                await adapter.save({ name: "John", addressId: "10", address: { street: "Rua A" } } as any);
+
+                expect(user.create).toHaveBeenCalledWith({
+                    data: { name: "John", address: { create: { street: "Rua A" } } },
+                });
+            });
+
+            it("should reject INVALID_DATA, without calling Prisma, when the payload has the pk and allowOmitPk is off", async () => {
+                const { adapter, user } = setup({ relations: ownerRelationsConfig });
+
+                await expect(adapter.save(payload)).rejects.toThrow(VSRepoAdapterError);
+                await expect(adapter.save(payload)).rejects.toMatchObject({ code: AdapterErrorCode.INVALID_DATA });
+                await expect(adapter.save(payload)).rejects.toThrow(/allowOmitPk/);
+                expect(user.upsert).not.toHaveBeenCalled();
+            });
+
+            it("should drop the pk from create when allowOmitPk is set in the adapter config", async () => {
+                const { adapter, user } = setup({ relations: ownerRelationsConfig, allowOmitPk: true });
+                user.upsert!.mockResolvedValue({});
+
+                await adapter.save(payload);
+
+                expect(user.upsert).toHaveBeenCalledWith({
+                    where: { id: "1" },
+                    create: {
+                        name: "John",
+                        address: {
+                            connectOrCreate: { where: { id: "10" }, create: { id: "10", street: "Rua A" } },
+                        },
+                    },
+                    update: {
+                        name: "John",
+                        address: { connectOrCreate: { where: { id: "10" }, create: { id: "10", street: "Rua A" } } },
+                    },
+                });
+            });
+
+            it("should use allowOmitPk from the global config when the adapter config doesn't set it", async () => {
+                VSRepoPrisma7Adapter.setGlobalConfig({ allowOmitPk: true });
+                const { adapter, user } = setup({ relations: ownerRelationsConfig });
+                user.upsert!.mockResolvedValue({});
+
+                await adapter.save(payload);
+
+                expect(user.upsert).toHaveBeenCalledTimes(1);
+                expect(user.upsert!.mock.calls[0]![0].create).not.toHaveProperty("id");
+            });
+
+            it("should let the adapter config override the global allowOmitPk", async () => {
+                VSRepoPrisma7Adapter.setGlobalConfig({ allowOmitPk: true });
+                const { adapter, user } = setup({ relations: ownerRelationsConfig, allowOmitPk: false });
+
+                await expect(adapter.save(payload)).rejects.toMatchObject({ code: AdapterErrorCode.INVALID_DATA });
+                expect(user.upsert).not.toHaveBeenCalled();
+            });
+
+            it("should also reject a create with the pk when allowOmitPk is off", async () => {
+                const { adapter, user } = setup({ relations: ownerRelationsConfig });
+
+                await expect(adapter.create(payload)).rejects.toMatchObject({ code: AdapterErrorCode.INVALID_DATA });
+                expect(user.create).not.toHaveBeenCalled();
+            });
+
+            it("should drop the pk from create when allowOmitPk is on", async () => {
+                const { adapter, user } = setup({ relations: ownerRelationsConfig, allowOmitPk: true });
+                user.create!.mockResolvedValue({});
+
+                await adapter.create(payload);
+
+                expect(user.create).toHaveBeenCalledWith({
+                    data: {
+                        name: "John",
+                        address: {
+                            connectOrCreate: { where: { id: "10" }, create: { id: "10", street: "Rua A" } },
+                        },
+                    },
+                });
             });
         });
 
