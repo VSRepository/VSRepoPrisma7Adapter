@@ -1,6 +1,13 @@
 export { VSRepoPrisma7Adapter, VSRepoPrisma7Adapter as Prisma7Adapter } from "./prisma7.adapter.js";
 
-export type { Relation } from "./types/relation.type.js";
+export type {
+    Relation,
+    DisconnectStrategy,
+    RelationMode,
+    RelationPersistence,
+    ToManyStrategy,
+    ToOneStrategy,
+} from "./types/relation.type.js";
 export type { Prisma7OrmTypes } from "./types/prisma7-orm-types.type.js";
 export type { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 export type { AdapterRelations } from "./types/adapter-relations.type.js";

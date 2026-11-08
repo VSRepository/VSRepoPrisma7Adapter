@@ -14,9 +14,6 @@ function omitKey(item: PlainObject, key: string): PlainObject {
     return clone;
 }
 
-/** Default `restriction` applied when the relation config doesn't set one. */
-const DEFAULT_RESTRICTION = "add";
-
 function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; withoutPk: PlainObject[] } {
     const withPk: PlainObject[] = [];
     const withoutPk: PlainObject[] = [];
@@ -28,28 +25,19 @@ function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; w
     return { withPk, withoutPk };
 }
 
+const DEFAULT_TO_ONE_STRATEGY = "connectOrCreate";
+const DEFAULT_TO_MANY_STRATEGY = "add";
+const DEFAULT_DISCONNECT_STRATEGY = "disconnect";
+
 function parseToOneRelation(
     field: PlainObject | null,
-    relation: Relation<{}>,
+    relation: Relation<any, any, "mto" | "oto">,
 ): { create?: PlainObject; update?: PlainObject } {
-    const restriction = relation.restriction ?? DEFAULT_RESTRICTION;
+    const disconnectStrategy = relation.onDisconnect ?? DEFAULT_DISCONNECT_STRATEGY;
+    const updateStrategy = relation.onUpdate ?? DEFAULT_TO_ONE_STRATEGY;
 
     if (field === null) {
-        if (!relation.nullable) {
-            throw new VSRepoAdapterError(
-                `You cannot provide null for a to-one relation when it is not nullable.`,
-                AdapterErrorCode.INVALID_DATA,
-                null,
-            );
-        }
-        if (relation.mode === "oto") {
-            if (restriction === "set") {
-                return { update: { delete: true } };
-            }
-            return { update: { disconnect: true } };
-        }
-        // relation.mode === "mto"
-        return { update: { disconnect: true } };
+        return disconnectStrategy === "disconnect" ? { update: { disconnect: true } } : { update: { delete: true } };
     }
 
     if (relation.fkThere !== undefined) {
@@ -61,7 +49,7 @@ function parseToOneRelation(
     if (pkValue === undefined) {
         return {
             create: { create: field },
-            update: restriction === "add" ? { create: field } : { upsert: { create: field, update: field } },
+            update: updateStrategy === "upsert" ? { upsert: { create: field, update: field } } : { create: field },
         };
     }
 
@@ -70,30 +58,20 @@ function parseToOneRelation(
     return {
         create: { connectOrCreate },
         update:
-            restriction === "add"
-                ? relation.mode === "mto"
-                    ? { connectOrCreate }
-                    : {
-                          upsert: {
-                              where: { [relation.pk]: pkValue },
-                              create: field,
-                              update: {},
-                          },
-                      }
-                : {
-                      upsert: {
-                          where: { [relation.pk]: pkValue },
-                          create: field,
-                          update: omitKey(field, relation.pk),
-                      },
-                  },
+            updateStrategy === "upsert"
+                ? {
+                      upsert: { where: { [relation.pk]: pkValue }, create: field, update: omitKey(field, relation.pk) },
+                  }
+                : { connectOrCreate },
     };
 }
 
 function parseToManyRelation(
     field: PlainObject[],
-    relation: Relation<{}>,
+    relation: Relation<any, any, "otm" | "mtm">,
 ): { create: PlainObject; update: PlainObject } {
+    const updateStrategy = relation.onUpdate ?? DEFAULT_TO_MANY_STRATEGY;
+
     if (relation.fkThere !== undefined) {
         field = field.map(f => omitKey(f, relation.fkThere!));
     }
@@ -116,9 +94,7 @@ function parseToManyRelation(
 
     const create = { create: withoutPk, connectOrCreate };
 
-    const restriction = relation.restriction ?? DEFAULT_RESTRICTION;
-
-    if (restriction === "add") {
+    if (updateStrategy === "add") {
         return {
             create,
             update: relation.mode === "mtm" ? { create: withoutPk, connectOrCreate } : { create: withoutPk, upsert },
@@ -157,13 +133,14 @@ export function parsePrismaWriteData<T>(
     for (const [key, field] of Object.entries(obj)) {
         if (field === undefined) continue;
 
-        const relation = (relations as PlainObject | undefined)?.[key] as Relation<{}> | undefined;
+        const relation = (relations as PlainObject | undefined)?.[key] as Relation<any, any> | "ignore" | undefined;
 
         if (!relation) {
             create[key] = field;
             if (!omitPkInUpdate || key !== pkName) update[key] = field;
             continue;
         }
+        if (relation === "ignore") continue;
 
         if (relation.fkHere !== undefined) {
             fkHereRelations.push(key);
@@ -171,13 +148,13 @@ export function parsePrismaWriteData<T>(
         }
 
         if (relation.mode === "oto" || relation.mode === "mto") {
-            const parsed = parseToOneRelation(field, relation);
+            const parsed = parseToOneRelation(field, relation as any);
             if (parsed.create !== undefined) create[key] = parsed.create;
             if (parsed.update !== undefined) update[key] = parsed.update;
             continue;
         }
 
-        const parsed = parseToManyRelation(field as PlainObject[], relation);
+        const parsed = parseToManyRelation(field as PlainObject[], relation as any);
         create[key] = parsed.create;
         update[key] = parsed.update;
     }

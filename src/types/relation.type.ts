@@ -1,4 +1,36 @@
 /**
+ * @publicApi
+ */
+export type RelationMode = "oto" | "mto" | "otm" | "mtm";
+
+/**
+ * @publicApi
+ */
+export type ToOneStrategy = "connectOrCreate" | "upsert";
+
+/**
+ * @publicApi
+ */
+export type ToManyStrategy = "add" | "set";
+
+/**
+ * @publicApi
+ */
+export type DisconnectStrategy = "disconnect" | "delete";
+
+/**
+ * @publicApi
+ */
+export type RelationPersistence<M extends RelationMode> = M extends "oto" | "mto"
+    ? {
+          onUpdate?: ToOneStrategy;
+          onDisconnect?: DisconnectStrategy;
+      }
+    : {
+          onUpdate?: ToManyStrategy;
+      };
+
+/**
  * Configuration of a single relation field.
  *
  * @template T Type of the related entity.
@@ -6,7 +38,7 @@
  *
  * @publicApi
  */
-export interface Relation<T = any, K = any> {
+export type Relation<T = any, K = any, M extends RelationMode = RelationMode> = {
     /**
      * Cardinality of the relation from the point of view of the entity
      * that owns the field (`oto` = one-to-one, `mto` = many-to-one,
@@ -14,20 +46,11 @@ export interface Relation<T = any, K = any> {
      */
     mode: "otm" | "mtm" | "mto" | "oto";
     /**
-     * How `save`/`update`/`upsert` handle to-many relations
-     * (`otm`/`mtm`) and to-one relations pointing to an already-existing record
-     * (matched by `pk`) — `"add"` only creates/connects the items that were
-     * sent (upsert per item), `"set"` also removes/disconnects whatever wasn't
-     * sent.
-     * @default "add"
-     */
-    restriction?: "set" | "add";
-    /**
      * Name of the field used as the identifier of the related record,
      * used to decide between `create` (no pk in the payload) and
      * `connectOrCreate`/`upsert` (pk present).
      */
-    pk: keyof T;
+    pk: keyof T & string;
 
     /**
      * Name of the scalar foreign key that lives in **this** entity (the one
@@ -41,7 +64,7 @@ export interface Relation<T = any, K = any> {
      * `INVALID_DATA` unless `allowOmitPk` is enabled (see
      * `Prisma7AdapterConfig.allowOmitPk`).
      */
-    fkHere?: keyof K;
+    fkHere?: keyof K & string;
 
     /**
      * Name of the scalar foreign key that lives in the **related** entity —
@@ -49,14 +72,5 @@ export interface Relation<T = any, K = any> {
      * adapter strips it from the related payload(s) before building the
      * nested write, since the relation already sets it.
      */
-    fkThere?: keyof T;
-
-    /**
-     * For `oto`/`mto` relations, whether the field accepts being set
-     * to `null`. When `true`, sending `null` on update resolves to `delete`
-     * (`oto` + `restriction: "set"`) or `disconnect` (`oto` + `restriction:
-     * "add"`, and `mto`). When `false`/omitted, sending `null` for a to-one
-     * relation throws a `VSRepoAdapterError` (code `INVALID_DATA`).
-     */
-    nullable?: boolean;
-}
+    fkThere?: keyof T & string;
+} & RelationPersistence<M>;
