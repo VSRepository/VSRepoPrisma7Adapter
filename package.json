@@ -1,6 +1,6 @@
 {
   "name": "@vsrepo/prisma7-adapter",
-  "version": "2.0.0-dev",
+  "version": "2.0.0-dev.1",
   "author": {
     "email": "joaodev.azevedo@outlook.com",
     "url": "https://github.com/jaobrabo123",
@@ -33,7 +33,7 @@
   },
   "peerDependencies": {
     "@prisma/client": "^7.10.1",
-    "vsrepo": "^3.0.0-dev.2"
+    "vsrepo": "^3.0.0-dev.3"
   },
   "exports": {
     ".": {

@@ -388,7 +388,7 @@ O adapter usa o `VSLogger` (de `vsrepo`) internamente: todo método loga uma lin
 
 ## Requisitos
 
-- `vsrepo` ^3.0.0-dev.2
+- `vsrepo` ^3.0.0-dev.3
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - Um banco PostgreSQL, CockroachDB, MySQL, SQLite ou SQL Server (todos cobertos pelos testes de integração)

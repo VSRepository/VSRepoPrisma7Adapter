@@ -388,7 +388,7 @@ The adapter uses `VSLogger` (from `vsrepo`) internally: every method logs a `DEB
 
 ## Requirements
 
-- `vsrepo` ^3.0.0-dev.2
+- `vsrepo` ^3.0.0-dev.3
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - A PostgreSQL, CockroachDB, MySQL, SQLite or SQL Server database (all covered by the integration tests)

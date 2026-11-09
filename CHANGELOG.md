@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased] - 2026-11-08
+## [2.0.0-dev.1] - 2026-11-08
 
 ### Added
 
@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - **A to-one relation with the related `pk` now defaults to `connect` on update** (it used to be `connectOrCreate`), so the related record is no longer created when it is missing (the write fails with `NOT_FOUND`). Use `onUpdate: "connectOrCreate"` to get it back
 - A write whose payload has the primary key **and** an `fkHere` relation now throws `INVALID_DATA` (a `VSRepoAdapterError` explaining `allowOmitPk`) instead of being sent to Prisma, unless `allowOmitPk` is enabled. Payloads without the primary key are not affected
 - The `@prisma/client` peer dependency is now `^7.10.1` (was `^7.10.0`)
+- `vsrepo` peer dependency bumped to `^3.0.0-dev.3`
 
 ### Fixed
 
@@ -37,7 +38,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased] - 2026-11-08 (Português)
+## [2.0.0-dev.1] - 2026-11-08 (Português)
 
 ### Adicionado
 
@@ -60,6 +61,7 @@ All notable changes to this project will be documented in this file.
 - **Uma relation to-one com a `pk` do relacionado agora usa `connect` por padrão no update** (antes era `connectOrCreate`), então o relacionado não é mais criado quando não existe (a escrita falha com `NOT_FOUND`). Use `onUpdate: "connectOrCreate"` pra recuperar o comportamento antigo
 - Uma escrita cujo payload tem a primary key **e** uma relation `fkHere` agora lança `INVALID_DATA` (um `VSRepoAdapterError` explicando o `allowOmitPk`) em vez de ser enviada ao Prisma, a menos que `allowOmitPk` esteja ativado. Payloads sem a primary key não são afetados
 - A peer dependency `@prisma/client` agora é `^7.10.1` (era `^7.10.0`)
+- Peer dependency `vsrepo` elevada pra `^3.0.0-dev.3`
 
 ### Corrigido
 
