@@ -12,6 +12,7 @@ defineAdapterIntegrationSuite({
         skipDuplicates: false,
         insensitiveMode: false,
         isolatedReadsDuringTransaction: false,
+        explicitPkInsert: true,
     },
     quote: table => `"${table}"`,
     placeholder: getSqlitePlaceholder,

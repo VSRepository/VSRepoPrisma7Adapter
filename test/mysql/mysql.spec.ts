@@ -11,6 +11,7 @@ defineAdapterIntegrationSuite({
         skipDuplicates: true,
         insensitiveMode: false,
         isolatedReadsDuringTransaction: true,
+        explicitPkInsert: true,
     },
     quote: table => `\`${table}\``,
     placeholder: getMySqlPlaceholder,

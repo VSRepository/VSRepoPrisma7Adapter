@@ -11,6 +11,7 @@ defineAdapterIntegrationSuite({
         skipDuplicates: false,
         insensitiveMode: false,
         isolatedReadsDuringTransaction: false,
+        explicitPkInsert: false,
     },
     quote: table => `[${table}]`,
     placeholder: getSqlServerPlaceholder,

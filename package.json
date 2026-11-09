@@ -1,6 +1,6 @@
 {
   "name": "@vsrepo/prisma7-adapter",
-  "version": "2.0.0-dev",
+  "version": "2.0.0-dev.1",
   "author": {
     "email": "joaodev.azevedo@outlook.com",
     "url": "https://github.com/jaobrabo123",
@@ -15,7 +15,7 @@
     "@prisma/adapter-better-sqlite3": "^7.10.1",
     "@prisma/adapter-mariadb": "^7.10.1",
     "@prisma/adapter-mssql": "^7.10.1",
-    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/adapter-pg": "^7.10.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/mssql": "^12.3.0",
     "@types/node": "^26.4.0",
@@ -26,14 +26,14 @@
     "oxlint-tsgolint": "^7.0.2005",
     "pg": "^8.23.0",
     "prettier": "^3.9.10",
-    "prisma": "^7.10.0",
+    "prisma": "^7.10.1",
     "tsx": "^4.23.12",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },
   "peerDependencies": {
-    "@prisma/client": "^7.10.0",
-    "vsrepo": "^3.0.0-dev.2"
+    "@prisma/client": "^7.10.1",
+    "vsrepo": "^3.0.0-dev.3"
   },
   "exports": {
     ".": {
@@ -78,8 +78,8 @@
     "lint:fix": "oxlint --fix src/ test/",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format:docs": "prettier --write \"docs/**/*.md\" \"./*.md\"",
-    "format:docs:check": "prettier --check \"docs/**/*.md\" \"./*.md\"",
+    "format:docs": "prettier --write \"./*.md\"",
+    "format:docs:check": "prettier --check \"./*.md\"",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
