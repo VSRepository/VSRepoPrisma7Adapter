@@ -26,15 +26,17 @@ Implementação de `VSRepoAdapter` para o [VSRepository v3](https://github.com/V
 - [Config do construtor](#config-do-construtor)
 - [Config global](#config-global)
 - [Relations](#relations)
-  - [Os dois `relations`](#os-dois-relations)
-  - [`relations` no construtor (escrita)](#relations-no-construtor-escrita)
-    - [`mode`](#mode)
-    - [`restriction`](#restriction)
-    - [`pk` e `nullable`](#pk-e-nullable)
-    - [`fkHere` e `fkThere`](#fkhere-e-fkthere)
-    - [`allowOmitPk`](#allowomitpk)
-    - [Como cada método de escrita resolve relations](#como-cada-método-de-escrita-resolve-relations)
-  - [`relations` nas options (leitura)](#relations-nas-options-leitura)
+    - [Os dois `relations`](#os-dois-relations)
+    - [`relations` no construtor (escrita)](#relations-no-construtor-escrita)
+        - [`mode`](#mode)
+        - [`pk`](#pk)
+        - [`onUpdate`](#onupdate)
+        - [`onDisconnect`](#ondisconnect)
+        - [Ignorando uma relation (`"ignore"`)](#ignorando-uma-relation-ignore)
+        - [`fkHere` e `fkThere`](#fkhere-e-fkthere)
+        - [`allowOmitPk`](#allowomitpk)
+        - [Como cada método de escrita resolve relations](#como-cada-método-de-escrita-resolve-relations)
+    - [`relations` nas options (leitura)](#relations-nas-options-leitura)
 - [Métodos atômicos e de agregação](#métodos-atômicos-e-de-agregação)
 - [`createMany`/`createManyReturning`/`updateMany`/`updateManyReturning` não suportam nested writes](#createmanycreatemanyreturningupdatemanyupdatemanyreturning-não-suportam-nested-writes)
 - [Limitações por provider](#limitações-por-provider)
@@ -70,7 +72,7 @@ class UserRepository extends VSRepository<User, string, MyOrmTypes> {
                 modelName: "user",
                 pkName: "id",
                 relations: {
-                    posts: { mode: "otm", restriction: "add", pk: "id" },
+                    posts: { mode: "otm", pk: "id" },
                 },
                 logLevel: VSLogLevel.WARN,
             }),
@@ -129,13 +131,13 @@ Prisma7Adapter.setGlobalConfig({ logLevel: VSLogLevel.WARN });
 
 O nome `relations` aparece em **dois lugares diferentes** da API, com **formas e propósitos diferentes** — fácil de confundir. Em resumo:
 
-| | `relations` no **construtor** | `relations` nas **options** |
-| --- | --- | --- |
-| Onde você define | `new Prisma7Adapter(prisma, { relations: ... })` | `repository.get(where, { relations: ... })` — e demais métodos |
-| Formato | Um objeto de **configuração** por campo: `{ mode, pk, restriction?, nullable?, fkHere?, fkThere? }` | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }` |
-| Propósito | **Escrita** — quando um payload de `create`/`update`/`upsert`/`save` tem campo de relação, diz como transformá-lo num nested write do Prisma (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Leitura** — eager loading: quais relations trazer junto no resultado (vira um `include` do Prisma) |
-| Quem consome | `parsePrismaWriteData` (resolver de escrita) | `parsePrismaInclude` (via `resolveReadArg`) |
-| Precisa da outra? | Não — só afeta escritas | Não — funciona mesmo sem `relations` no construtor |
+|                   | `relations` no **construtor**                                                                                                                                                                                                | `relations` nas **options**                                                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Onde você define  | `new Prisma7Adapter(prisma, { relations: ... })`                                                                                                                                                                             | `repository.get(where, { relations: ... })` — e demais métodos                                       |
+| Formato           | Um objeto de **configuração** por campo (`{ mode, pk, onUpdate?, onDisconnect?, fkHere?, fkThere? }`), ou `"ignore"`                                                                                                         | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }`                               |
+| Propósito         | **Escrita** — quando um payload de `create`/`update`/`upsert`/`save` tem campo de relação, diz como transformá-lo num nested write do Prisma (`create`/`connect`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Leitura** — eager loading: quais relations trazer junto no resultado (vira um `include` do Prisma) |
+| Quem consome      | `parsePrismaWriteData` (resolver de escrita)                                                                                                                                                                                 | `parsePrismaInclude` (via `resolveReadArg`)                                                          |
+| Precisa da outra? | Não — só afeta escritas                                                                                                                                                                                                      | Não — funciona mesmo sem `relations` no construtor                                                   |
 
 Nenhum depende do outro: o `relations` das options faz eager loading de leitura mesmo quando o construtor não tem `relations`; e o `relations` do construtor governa o comportamento de escrita mesmo que você nunca passe `relations` nas options. As duas subseções abaixo detalham cada um.
 
@@ -147,9 +149,10 @@ Cada relation é configurada pelo nome do campo:
 
 ```typescript
 relations: {
-    posts: { mode: "otm", restriction: "add", pk: "id" },
-    address: { mode: "oto", restriction: "set", pk: "id" },
-    author: { mode: "mto", restriction: "set", pk: "id", nullable: true },
+    posts: { mode: "otm", pk: "id", onUpdate: "set" },
+    address: { mode: "oto", pk: "id", onUpdate: "upsert", onDisconnect: "delete" },
+    author: { mode: "mto", pk: "id" }, // toda opção tem default
+    audit: "ignore", // nunca é escrita por este repository
 }
 ```
 
@@ -159,35 +162,61 @@ Sem `relations`, todo campo — incluindo campos de relação — é repassado d
 
 Cardinalidade da relation, do ponto de vista da entidade dona do campo:
 
-| `mode` | Significado | Formato do campo que você envia |
-| --- | --- | --- |
-| `oto` | one-to-one | um único objeto, ou `null` |
-| `mto` | many-to-one | um único objeto, ou `null` |
-| `otm` | one-to-many | um array de objetos |
-| `mtm` | many-to-many | um array de objetos |
+| `mode` | Significado  | Formato do campo que você envia | Opções                                                                                     |
+| ------ | ------------ | ------------------------------- | ------------------------------------------------------------------------------------------ |
+| `oto`  | one-to-one   | um único objeto, ou `null`      | `pk`, `onUpdate` (to-one), `onDisconnect` (`"disconnect"`/`"delete"`), `fkHere`, `fkThere` |
+| `mto`  | many-to-one  | um único objeto, ou `null`      | `pk`, `onUpdate` (to-one), `onDisconnect` (`"disconnect"`/`"delete"`), `fkHere`, `fkThere` |
+| `otm`  | one-to-many  | um array de objetos             | `pk`, `onUpdate` (to-many), `fkThere`                                                      |
+| `mtm`  | many-to-many | um array de objetos             | `pk`, `onUpdate` (to-many), `fkThere`                                                      |
 
-#### `restriction`
+#### `pk`
 
-Controla como `save`/`update`/`upsert` tratam itens de relação que já existem (casados pela `pk`) e, pra relations to-many, itens que **não** vieram no payload:
+O campo usado pra identificar um registro relacionado já existente. Um item **com** `pk` no payload é conectado (ou recebe upsert) ao registro existente; um item **sem** ele é criado.
 
-- **`"add"`** (default, quando `restriction` é omitido) — só cria/conecta/faz upsert dos itens enviados. Itens já existentes que não estão no payload permanecem intocados. Numa relation to-one que aponta pra um registro com `pk`, o `update` resolve diferente por `mode`:
-  - `mto` → `connectOrCreate`: o registro é conectado ao relacionado (criado se não existir), então ele pode ser **movido pra outro pai já existente**. Um relacionado existente nunca é sobrescrito.
-  - `oto` → `upsert` aninhado com `update` vazio: o relacionado é criado se não existir e nunca é sobrescrito, e enviar o **mesmo** relacionado de novo não faz nada. Mover um `oto` pra um registro *diferente* já existente não é suportado por essa resolução (falha com `UNIQUE_CONSTRAINT_VIOLATION`).
-- **`"set"`** — igual a `"add"`, mas também remove o que não foi enviado: em `otm` roda um `deleteMany` nos itens que faltam no array; em `mtm` reseta o vínculo (`set: []`) antes de reconectar; em `oto`/`mto` com `nullable: true`, enviar `null` apaga/desconecta a relation (ver abaixo).
+#### `onUpdate`
 
-#### `pk` e `nullable`
+Como `save`/`update`/`upsert` escrevem a relation no update. Os valores aceitos dependem do `mode`.
 
-- **`pk`** — o campo usado pra identificar um registro relacionado já existente. Um item **com** `pk` no payload vira um `connectOrCreate`/`upsert`; um item **sem** `pk` vira um `create` simples.
-- **`nullable`** — relevante pras relações to-one `oto`/`mto`. Quando `true`, enviar `null` no campo resolve pra `disconnect` no update (`delete` no caso de `oto` com `restriction: "set"` — um lado `oto` não dá só pra "desconectar", a linha possuída é removida). Quando omitido/`false`, enviar `null` numa relação to-one lança um `VSRepoAdapterError` (code `INVALID_DATA`) avisando que a relation não é nullable.
+**To-one (`oto`/`mto`)**, quando o objeto relacionado tem a `pk`:
+
+- **`"connect"`** nunca cria nem sobrescreve o registro relacionado: só aponta a relation pra ele.
+- **`"connectOrCreate"`** cria o relacionado quando ele não existe.
+- **`"upsert"`** é a que **sobrescreve** o relacionado com os campos enviados.
+- Quando o próprio registro dono está sendo criado (`create`, ou o ramo `create` do `save`), um relacionado com `pk` sempre vira `connectOrCreate`.
+
+**To-many (`otm`/`mtm`)**, pros itens que já existem (casados por `pk`) e pros que **não** foram enviados:
+
+- **`"add"`** (default) — só cria/conecta/faz upsert dos itens enviados. Itens já existentes que não estão no payload permanecem intocados.
+- **`"set"`** — igual ao `"add"`, mas também remove o que não foi enviado: `otm` roda um `deleteMany` nos itens ausentes do array, e `mtm` zera o join (`set: []`) antes de reconectar.
+
+#### `onDisconnect`
+
+O que enviar `null` pra uma relation to-one faz no update:
+
+- **`"disconnect"`** (default) — desanexa o registro relacionado e o mantém. O Prisma rejeita quando a relation é obrigatória.
+- **`"delete"`** — apaga o registro relacionado. Existe pra `oto` e `mto`, e é sempre opt-in. Cuidado num `mto`: o relacionado é compartilhado com outras linhas, então apagar afeta todas elas, e o Prisma rejeita a escrita enquanto outras linhas ainda o referenciam (a menos que a FK tenha uma ação referencial como `onDelete: Cascade`).
+
+#### Ignorando uma relation (`"ignore"`)
+
+Definir uma relation como `"ignore"` deixa o campo fora de toda escrita (`create`, `update`, `save`...): o objeto (ou array) é simplesmente descartado. Serve pra uma relation que você **carrega** mas não quer **persistir** por essa entidade.
+
+```typescript
+// AddressRepository
+relations: {
+    user: "ignore";
+}
+```
+
+Como o objeto de relation é descartado, uma FK escalar no payload (`userId`) passa como está, junto da primary key. Isso faz dela a forma mais simples de contornar o [problema do `allowOmitPk`](#allowomitpk) quando você só quer manter a FK: `address.save(addressCarregadoComUser)` atualiza o address e nunca toca no user.
 
 #### `fkHere` e `fkThere`
 
 Numa relation one-to-one ou many-to-one, só um dos lados guarda a coluna da foreign key. Em `Address.user`, é a `Address.userId`. Informe ao adapter em qual lado cada entidade está:
 
-| Entidade | Campo da relation | Guarda a FK? | Config |
-| --- | --- | --- | --- |
-| `Address` (lado dono) | `user` | **sim** — `userId` é uma coluna de `Address` | `fkHere: "userId"` |
-| `User` (lado inverso) | `address` | não — a FK fica na entidade relacionada (`Address`) | `fkThere: "userId"` |
+| Entidade              | Campo da relation | Guarda a FK?                                        | Config              |
+| --------------------- | ----------------- | --------------------------------------------------- | ------------------- |
+| `Address` (lado dono) | `user`            | **sim** — `userId` é uma coluna de `Address`        | `fkHere: "userId"`  |
+| `User` (lado inverso) | `address`         | não — a FK fica na entidade relacionada (`Address`) | `fkThere: "userId"` |
 
 ```typescript
 // UserRepository
@@ -217,18 +246,19 @@ O `fkHere` tem mais uma consequência, pra primary key — leia a próxima seç�
 
 **Formas de contornar, sem `allowOmitPk`:**
 
-1. **Enviar a FK escalar no lugar do objeto de relation.** `address.save({ id, city, userId })` mantém `id` e `userId`, já que não há objeto de relation. Persista a entidade relacionada por conta própria (pelo repository dela) quando ela também mudou — de preferência numa só `transaction`.
-2. **Enviar só o que mudou.** `address.update({ id }, { city })` não carrega nem a primary key nem a relation.
-3. **Salvar pelo outro lado.** `user.save({ ...user, address })` mantém as primary keys (configure o `fkThere` lá): a FK fica em `Address`, então `User` não tem FK própria pra conflitar.
-4. **Deixar o banco gerar a key dos registros novos.** Não envie `id` ao criar: `address.create({ city, user })`.
+1. **Ignorar a relation** quando você só quer manter a FK: `relations: { user: "ignore" }` (veja [Ignorando uma relation](#ignorando-uma-relation-ignore)). O payload mantém `id` e `userId`, e a entidade relacionada não é escrita.
+2. **Enviar a FK escalar no lugar do objeto de relation.** `address.save({ id, city, userId })` mantém `id` e `userId`, já que não há objeto de relation. Persista a entidade relacionada por conta própria (pelo repository dela) quando ela também mudou — de preferência numa só `transaction`.
+3. **Enviar só o que mudou.** `address.update({ id }, { city })` não carrega nem a primary key nem a relation.
+4. **Salvar pelo outro lado.** `user.save({ ...user, address })` mantém as primary keys (configure o `fkThere` lá): a FK fica em `Address`, então `User` não tem FK própria pra conflitar.
+5. **Deixar o banco gerar a key dos registros novos.** Não envie `id` ao criar: `address.create({ city, user })`.
 
 #### Como cada método de escrita resolve relations
 
-| Método | Relations |
-| --- | --- |
-| `create` | Só `create`/`connectOrCreate` (sem upsert — ainda não existe nada pra atualizar) |
-| `update` / `upsert` (metade do `update`) / `save` (branch de upsert) | Resolução completa: `create`/`connectOrCreate`/`upsert`/`disconnect`/`delete`/`deleteMany`/`set`, conforme `mode`/`restriction` |
-| `createMany` / `createManyReturning` / `updateMany` / `updateManyReturning` | Não suportado — lança um `VSRepoAdapterError` apontando o campo problemático se o payload tiver uma relation configurada |
+| Método                                                                      | Relations                                                                                                                                             |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create`                                                                    | Só `create`/`connectOrCreate` (sem upsert — ainda não existe nada pra atualizar)                                                                      |
+| `update` / `upsert` (metade do `update`) / `save` (branch de upsert)        | Resolução completa: `create`/`connect`/`connectOrCreate`/`upsert`/`disconnect`/`delete`/`deleteMany`/`set`, conforme `mode`/`onUpdate`/`onDisconnect` |
+| `createMany` / `createManyReturning` / `updateMany` / `updateManyReturning` | Não suportado — lança um `VSRepoAdapterError` apontando o campo problemático se o payload tiver uma relation configurada                              |
 
 ### `relations` nas options (leitura)
 
@@ -242,10 +272,10 @@ const user = await userRepository.get(
     "...", // primary key
     {
         relations: {
-            posts: true,                   // carrega os posts junto
-            author: { profile: true },     // e, dentro do author, o profile (eager loading aninhado)
+            posts: true, // carrega os posts junto
+            author: { profile: true }, // e, dentro do author, o profile (eager loading aninhado)
         },
-    }
+    },
 );
 ```
 
@@ -255,16 +285,14 @@ O `select` e o `relations` que você passa nas options são transformados num `s
 
 ```ts
 const prismaSelect = options.select && parsePrismaSelect(options.select);
-const prismaInclude = prismaSelect
-    ? undefined
-    : options.relations && parsePrismaInclude(options.relations);
+const prismaInclude = prismaSelect ? undefined : options.relations && parsePrismaInclude(options.relations);
 ```
 
 ## Métodos atômicos e de agregação
 
 O adapter implementa os 12 métodos abstratos pros quais `increment`/`decrement`/`multiply`/`divide`, suas versões `*Many` e `sum`/`average`/`min`/`max` do `VSRepository` delegam: `incrementOne`, `decrementOne`, `multiplyOne`, `divideOne`, `incrementMany`, `decrementMany`, `multiplyMany`, `divideMany`, `sum`, `average`, `min`, `max`.
 
-- `incrementOne`/`decrementOne`/`multiplyOne`/`divideOne` traduzem direto pra escrita atômica nativa de campo único do Prisma — `data: { [field]: { increment: value } }` (e `decrement`/`multiply`/`divide`) — então a operação é avaliada **server-side** contra o valor *atual* do registro (`UPDATE ... SET field = field + value`), e não como um fetch-then-save no cliente. O `update()` do Prisma já retorna a linha refletindo o estado *após* a escrita, então o adapter nunca precisa fazer uma leitura extra.
+- `incrementOne`/`decrementOne`/`multiplyOne`/`divideOne` traduzem direto pra escrita atômica nativa de campo único do Prisma — `data: { [field]: { increment: value } }` (e `decrement`/`multiply`/`divide`) — então a operação é avaliada **server-side** contra o valor _atual_ do registro (`UPDATE ... SET field = field + value`), e não como um fetch-then-save no cliente. O `update()` do Prisma já retorna a linha refletindo o estado _após_ a escrita, então o adapter nunca precisa fazer uma leitura extra.
 - `incrementMany`/`decrementMany`/`multiplyMany`/`divideMany` aplicam essa mesma escrita nativa em **todo** registro que casa com `where`, através do `updateMany` do Prisma, também avaliada server-side. Eles retornam um `{ count }` (`CountResult`) em vez dos registros.
 - `sum`/`average`/`min`/`max` traduzem pro `aggregate()` do Prisma, com `_sum`/`_avg`/`_min`/`_max: { [field]: true }`. O resultado bruto (`number`, `bigint`, uma instância de `Decimal`, ou `null`) é normalizado pra `number | null` — `null` é repassado como está (espelhando o `SUM()`/`AVG()`/`MIN()`/`MAX()` do SQL, que retornam `NULL`, não `0`, sobre um conjunto vazio), e um valor `Decimal`/`DecimalLike` é convertido via seu `.toNumber()`.
 
@@ -297,11 +325,11 @@ const mostExpensive = await productRepository.max("price");
 
 Alguns recursos que esse adapter usa não estão disponíveis em todo banco. O adapter checa todos os recursos abaixo antecipadamente e lança um `VSRepoAdapterError` (code `NOT_SUPPORTED`) antes de tocar no banco.
 
-| Recurso | Providers com suporte | Sem suporte |
-| --- | --- | --- |
-| `ignoreCase` (traduzido pro `mode: "insensitive"` do Prisma; usado pelos métodos dinâmicos `findByXIgnoreCase`) | PostgreSQL, CockroachDB | MySQL, SQLite, SQL Server — MySQL e SQL Server já são case-insensitive por padrão (conforme a collation), então não precisam de `mode`; SQLite só é case-insensitive pra caracteres ASCII |
-| `createManyReturning` / `updateManyReturning` (baseados no `createManyAndReturn`/`updateManyAndReturn` do Prisma) | PostgreSQL, CockroachDB, SQLite | MySQL, SQL Server |
-| `ignoreConflicts: true` no `createMany` / `createManyReturning` (o `skipDuplicates` do Prisma) | PostgreSQL, MySQL, CockroachDB | SQL Server, SQLite |
+| Recurso                                                                                                           | Providers com suporte           | Sem suporte                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ignoreCase` (traduzido pro `mode: "insensitive"` do Prisma; usado pelos métodos dinâmicos `findByXIgnoreCase`)   | PostgreSQL, CockroachDB         | MySQL, SQLite, SQL Server — MySQL e SQL Server já são case-insensitive por padrão (conforme a collation), então não precisam de `mode`; SQLite só é case-insensitive pra caracteres ASCII |
+| `createManyReturning` / `updateManyReturning` (baseados no `createManyAndReturn`/`updateManyAndReturn` do Prisma) | PostgreSQL, CockroachDB, SQLite | MySQL, SQL Server                                                                                                                                                                         |
+| `ignoreConflicts: true` no `createMany` / `createManyReturning` (o `skipDuplicates` do Prisma)                    | PostgreSQL, MySQL, CockroachDB  | SQL Server, SQLite                                                                                                                                                                        |
 
 O operador `like` não é suportado em nenhum provider — o Prisma não tem equivalente, então o adapter lança `NOT_SUPPORTED`. Use `contains`, `startsWith` ou `endsWith`.
 

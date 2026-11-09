@@ -4,7 +4,6 @@ export type {
     Relation,
     DisconnectStrategy,
     RelationMode,
-    RelationPersistence,
     ToManyStrategy,
     ToOneStrategy,
 } from "./types/relation.type.js";

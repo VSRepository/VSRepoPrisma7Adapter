@@ -30,7 +30,7 @@ function relations(config: Record<string, Relation<any>>): any {
 }
 
 function rel(mode: Relation["mode"], extra: Partial<Relation> = {}): Relation<any> {
-    return { mode, restriction: "add", pk: "id", ...extra };
+    return { mode, pk: "id", ...extra } as Relation<any>;
 }
 
 describe("mergeEntities", () => {

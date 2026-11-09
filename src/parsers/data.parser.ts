@@ -1,7 +1,7 @@
 import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
 import { AdapterRelations } from "../types/adapter-relations.type.js";
 import { PlainObject } from "../types/plain-object.type.js";
-import { Relation } from "../types/relation.type.js";
+import type { Relation, ToOneStrategy } from "../types/relation.type.js";
 
 export interface PrismaWriteData {
     create: PlainObject;
@@ -25,19 +25,43 @@ function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; w
     return { withPk, withoutPk };
 }
 
-const DEFAULT_TO_ONE_STRATEGY = "connectOrCreate";
+/** `Relation.onUpdate` of a to-one relation when the config doesn't set one. */
+const DEFAULT_TO_ONE_STRATEGY = "connect";
+/** `Relation.onUpdate` of a to-many relation when the config doesn't set one. */
 const DEFAULT_TO_MANY_STRATEGY = "add";
+/** `Relation.onDisconnect` of a to-one relation when the config doesn't set one. */
 const DEFAULT_DISCONNECT_STRATEGY = "disconnect";
+
+/**
+ * `update` half of a to-one relation whose related object has its `pk`,
+ * according to the relation's `onUpdate` ({@link ToOneStrategy}).
+ */
+function resolveExistingToOneUpdate(
+    strategy: ToOneStrategy,
+    pk: string,
+    where: PlainObject,
+    field: PlainObject,
+): PlainObject {
+    switch (strategy) {
+        case "connect":
+            return { connect: where };
+        case "connectOrCreate":
+            return { connectOrCreate: { where, create: field } };
+        case "upsert":
+            return { upsert: { where, create: field, update: omitKey(field, pk) } };
+    }
+}
 
 function parseToOneRelation(
     field: PlainObject | null,
-    relation: Relation<any, any, "mto" | "oto">,
+    relation: Relation<any, any, "oto" | "mto">,
 ): { create?: PlainObject; update?: PlainObject } {
-    const disconnectStrategy = relation.onDisconnect ?? DEFAULT_DISCONNECT_STRATEGY;
     const updateStrategy = relation.onUpdate ?? DEFAULT_TO_ONE_STRATEGY;
 
     if (field === null) {
-        return disconnectStrategy === "disconnect" ? { update: { disconnect: true } } : { update: { delete: true } };
+        const disconnectStrategy = relation.onDisconnect ?? DEFAULT_DISCONNECT_STRATEGY;
+
+        return disconnectStrategy === "delete" ? { update: { delete: true } } : { update: { disconnect: true } };
     }
 
     if (relation.fkThere !== undefined) {
@@ -53,16 +77,11 @@ function parseToOneRelation(
         };
     }
 
-    const connectOrCreate = { where: { [relation.pk]: pkValue }, create: field };
+    const where = { [relation.pk]: pkValue };
 
     return {
-        create: { connectOrCreate },
-        update:
-            updateStrategy === "upsert"
-                ? {
-                      upsert: { where: { [relation.pk]: pkValue }, create: field, update: omitKey(field, relation.pk) },
-                  }
-                : { connectOrCreate },
+        create: { connectOrCreate: { where, create: field } },
+        update: resolveExistingToOneUpdate(updateStrategy, relation.pk, where, field),
     };
 }
 
@@ -133,7 +152,7 @@ export function parsePrismaWriteData<T>(
     for (const [key, field] of Object.entries(obj)) {
         if (field === undefined) continue;
 
-        const relation = (relations as PlainObject | undefined)?.[key] as Relation<any, any> | "ignore" | undefined;
+        const relation = (relations as PlainObject | undefined)?.[key] as Relation | "ignore" | undefined;
 
         if (!relation) {
             create[key] = field;
@@ -142,19 +161,19 @@ export function parsePrismaWriteData<T>(
         }
         if (relation === "ignore") continue;
 
-        if (relation.fkHere !== undefined) {
-            fkHereRelations.push(key);
-            keysToOmit.push(relation.fkHere as string);
-        }
-
         if (relation.mode === "oto" || relation.mode === "mto") {
-            const parsed = parseToOneRelation(field, relation as any);
+            if (relation.fkHere !== undefined) {
+                fkHereRelations.push(key);
+                keysToOmit.push(relation.fkHere);
+            }
+
+            const parsed = parseToOneRelation(field, relation);
             if (parsed.create !== undefined) create[key] = parsed.create;
             if (parsed.update !== undefined) update[key] = parsed.update;
             continue;
         }
 
-        const parsed = parseToManyRelation(field as PlainObject[], relation as any);
+        const parsed = parseToManyRelation(field as PlainObject[], relation);
         create[key] = parsed.create;
         update[key] = parsed.update;
     }

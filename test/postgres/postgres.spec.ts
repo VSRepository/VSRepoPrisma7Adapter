@@ -11,6 +11,7 @@ defineAdapterIntegrationSuite({
         skipDuplicates: true,
         insensitiveMode: true,
         isolatedReadsDuringTransaction: true,
+        explicitPkInsert: true,
     },
     quote: table => `"${table}"`,
     placeholder: getPostgresPlaceholder,

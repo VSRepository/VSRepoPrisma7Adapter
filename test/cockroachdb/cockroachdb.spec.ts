@@ -11,6 +11,7 @@ defineAdapterIntegrationSuite({
         skipDuplicates: true,
         insensitiveMode: true,
         isolatedReadsDuringTransaction: false,
+        explicitPkInsert: true,
     },
     quote: table => `"${table}"`,
     placeholder: getCockroachPlaceholder,
