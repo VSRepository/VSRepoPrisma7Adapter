@@ -1,3 +1,5 @@
+import { KeysOfType, Primitive } from "vsrepo";
+
 /**
  * Cardinality of a relation from the point of view of the entity that owns the
  * field: `oto` = one-to-one, `mto` = many-to-one, `otm` = one-to-many and
@@ -64,14 +66,14 @@ type RelationBase<T, M extends RelationMode> = {
      * used to decide between `create` (no pk in the payload) and
      * connecting to / upserting an existing record (pk present).
      */
-    pk: keyof T & string;
+    pk: (KeysOfType<T, Primitive> & string) | (string & {});
     /**
      * Name of the scalar foreign key that lives in the **related** entity —
      * e.g. `userId` in `User.address`, where `Address` holds the FK. The
      * adapter strips it from the related payload(s) before building the
      * nested write, since the relation already sets it.
      */
-    fkThere?: keyof T & string;
+    fkThere?: (KeysOfType<T, Primitive> & string) | (string & {});
 };
 
 /** Options of the `oto` and `mto` relations. */
@@ -88,7 +90,7 @@ type ToOneOptions<K> = {
      * `INVALID_DATA` unless `allowOmitPk` is enabled (see
      * `Prisma7AdapterConfig.allowOmitPk`).
      */
-    fkHere?: keyof K & string;
+    fkHere?: (KeysOfType<K, Primitive> & string) | (string & {});
     /**
      * How the related record is written on update when the payload has its `pk`.
      * @default "connect"

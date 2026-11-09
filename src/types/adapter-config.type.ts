@@ -1,4 +1,4 @@
-import type { VSLogLevel } from "vsrepo";
+import type { KeysOfType, Primitive, VSLogLevel } from "vsrepo";
 import { AdapterRelations } from "./adapter-relations.type.js";
 import { Prisma7ClientLike } from "./prisma7-client-like.type.js";
 import { PrismaClientModels } from "./prisma-client-models.type.js";
@@ -14,7 +14,7 @@ export interface Prisma7AdapterConfig<T = any, K extends Prisma7ClientLike = Pri
     /** Name of the Prisma Client model/delegate (e.g. `"user"`, as in `prisma.user`). */
     modelName: [PrismaClientModels<K>] extends [never] ? string : PrismaClientModels<K>;
     /** Name of the entity's primary key field (e.g. `"id"`). */
-    pkName: keyof T;
+    pkName: KeysOfType<T, Primitive> & string;
     /**
      * The entity's relation configuration, needed by the `create`/`update`
      * parsers to correctly resolve relation fields (see `Relation`/`AdapterRelations`).

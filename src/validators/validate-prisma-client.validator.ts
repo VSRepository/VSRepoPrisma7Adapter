@@ -1,6 +1,6 @@
 import { AdapterErrorCode, VSRepoAdapterError } from "vsrepo";
 
-export function validatePrismaClient(prisma: unknown, modelName: string): void {
+export function validatePrismaClient(prisma: unknown, modelName: string, pkName: string): void {
     if (prisma == null) {
         throw new VSRepoAdapterError(
             "Missing Prisma client: the first constructor argument (prisma) is null/undefined.",
@@ -18,5 +18,10 @@ export function validatePrismaClient(prisma: unknown, modelName: string): void {
             AdapterErrorCode.MODEL_NOT_FOUND,
             null,
         );
+    }
+
+    if (!(pkName in delegate.fields)) {
+        // Todo: melhorar erro
+        throw new Error();
     }
 }

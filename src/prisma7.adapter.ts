@@ -54,6 +54,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /** Whether the primary key may be dropped from a write payload when Prisma can't take it. */
     private readonly allowOmitPk?: boolean;
 
+    private readonly knownKeys: ReadonlySet<string>;
+
     private static globalConfig: Prisma7GlobalConfig = {};
 
     constructor(
@@ -62,10 +64,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     ) {
         super();
 
-        validatePrismaClient(prisma, config.modelName);
+        validatePrismaClient(prisma, config.modelName, config.pkName);
 
         this.modelName = config.modelName;
-        this.pkName = config.pkName as string;
+        this.pkName = config.pkName;
         this.relations = config.relations;
         this.provider = resolveProvider(prisma, config.provider ?? VSRepoPrisma7Adapter.globalConfig.provider);
         this.logger = new VSLogger(
@@ -73,6 +75,11 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             this.constructor.name + "Logger",
         );
         this.allowOmitPk = config.allowOmitPk ?? VSRepoPrisma7Adapter.globalConfig.allowOmitPk;
+
+        this.knownKeys = new Set([
+            ...Object.keys((this.prisma as any)[this.modelName].fields),
+            ...(this.relations ? Object.keys(this.relations) : []),
+        ]);
 
         this.logger.logInfo(
             `${this.constructor.name} initialized for table '${this.modelName}' (pkName: '${this.pkName}'${
@@ -359,7 +366,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     /** Runs `parsePrismaWriteData` with this adapter's `pkName`, `relations` and `allowOmitPk`. */
     private parseData(obj: any, omitPkInUpdate?: boolean) {
-        return parsePrismaWriteData(obj, this.pkName, this.relations, omitPkInUpdate, this.allowOmitPk);
+        return parsePrismaWriteData(obj, this.pkName, this.knownKeys, this.relations, omitPkInUpdate, this.allowOmitPk);
     }
 
     /** Fetches a single record matching `where`. */
