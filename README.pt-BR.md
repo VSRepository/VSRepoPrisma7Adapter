@@ -32,7 +32,7 @@ Implementação de `VSRepoAdapter` para o [VSRepository v3](https://github.com/V
         - [`pk`](#pk)
         - [`onUpdate`](#onupdate)
         - [`onDisconnect`](#ondisconnect)
-        - [Ignorando uma relation (`"ignore"`)](#ignorando-uma-relation-ignore)
+        - [Deixando uma relation fora das escritas](#deixando-uma-relation-fora-das-escritas)
         - [`fkHere` e `fkThere`](#fkhere-e-fkthere)
         - [`allowOmitPk`](#allowomitpk)
         - [Como cada método de escrita resolve relations](#como-cada-método-de-escrita-resolve-relations)
@@ -106,9 +106,10 @@ Na construção, o adapter confere o Prisma Client e o model, e resolve o provid
 
 - um client `null`/`undefined` lança um `VSRepoAdapterError` (code `MISSING_DB_CLIENT`);
 - um `modelName` sem delegate correspondente no client (`prisma.<modelName>`) lança `MODEL_NOT_FOUND`;
+- um `pkName` que não é um campo escalar do model (`prisma.<modelName>.fields`) lança `FIELD_NOT_FOUND`, e a mensagem lista os campos encontrados. Um delegate sem a metadata `fields` (ou seja, que não é um client gerado do Prisma 7) lança `MODEL_NOT_FOUND`;
 - o provider vem do `provider`, quando informado; senão é detectado a partir do client gerado (`_engineConfig.activeProvider`, com fallback pro `provider` do driver adapter). Se não for detectável, a construção lança `NOT_SUPPORTED` — nesse caso, informe o `provider` explicitamente (um de `postgresql`, `cockroachdb`, `mysql`, `sqlite`, `sqlserver`).
 
-Os outros campos (`pkName`, `relations`, `logLevel`, `allowOmitPk`) são checados só pelo TypeScript, não em runtime.
+Os outros campos (`relations`, `logLevel`, `allowOmitPk`) são checados só pelo TypeScript, não em runtime.
 
 ## Config global
 
@@ -134,7 +135,7 @@ O nome `relations` aparece em **dois lugares diferentes** da API, com **formas e
 |                   | `relations` no **construtor**                                                                                                                                                                                                | `relations` nas **options**                                                                          |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Onde você define  | `new Prisma7Adapter(prisma, { relations: ... })`                                                                                                                                                                             | `repository.get(where, { relations: ... })` — e demais métodos                                       |
-| Formato           | Um objeto de **configuração** por campo (`{ mode, pk, onUpdate?, onDisconnect?, fkHere?, fkThere? }`), ou `"ignore"`                                                                                                         | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }`                               |
+| Formato           | Um objeto de **configuração** por campo (`{ mode, pk, onUpdate?, onDisconnect?, fkHere?, fkThere? }`)                                                                                                                        | Um objeto por campo **só com `true` ou sub-objeto**: `{ posts: true }`                               |
 | Propósito         | **Escrita** — quando um payload de `create`/`update`/`upsert`/`save` tem campo de relação, diz como transformá-lo num nested write do Prisma (`create`/`connect`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Leitura** — eager loading: quais relations trazer junto no resultado (vira um `include` do Prisma) |
 | Quem consome      | `parsePrismaWriteData` (resolver de escrita)                                                                                                                                                                                 | `parsePrismaInclude` (via `resolveReadArg`)                                                          |
 | Precisa da outra? | Não — só afeta escritas                                                                                                                                                                                                      | Não — funciona mesmo sem `relations` no construtor                                                   |
@@ -152,11 +153,10 @@ relations: {
     posts: { mode: "otm", pk: "id", onUpdate: "set" },
     address: { mode: "oto", pk: "id", onUpdate: "upsert", onDisconnect: "delete" },
     author: { mode: "mto", pk: "id" }, // toda opção tem default
-    audit: "ignore", // nunca é escrita por este repository
 }
 ```
 
-Sem `relations`, todo campo — incluindo campos de relação — é repassado direto pro `where`/`data`/`create`/`update` do Prisma, como está. Isso funciona bem pra campos escalares, mas o Prisma espera um formato bem específico de nested write (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) pra campos de relação — então, se sua entidade tem relations, normalmente você vai querer configurá-las.
+Só os **campos escalares do model** (lidos de `prisma.<modelName>.fields` quando o adapter é criado) e as relations configuradas aqui são escritos. Qualquer outra chave num payload de `create`/`update`/`upsert`/`save` — normalmente um campo de relação que você não configurou — fica fora da escrita, em vez de ser enviada ao Prisma (que a rejeitaria com `Unknown argument`). O Prisma também espera um formato bem específico de nested write (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) pra campos de relação, então, se você quer uma relation persistida, configure-a. Os filtros `where` não são afetados.
 
 #### `mode`
 
@@ -179,8 +179,8 @@ Como `save`/`update`/`upsert` escrevem a relation no update. Os valores aceitos 
 
 **To-one (`oto`/`mto`)**, quando o objeto relacionado tem a `pk`:
 
-- **`"connect"`** nunca cria nem sobrescreve o registro relacionado: só aponta a relation pra ele.
-- **`"connectOrCreate"`** cria o relacionado quando ele não existe.
+- **`"connect"`** (default) nunca cria nem sobrescreve o registro relacionado: só aponta a relation pra ele.
+- **`"connectOrCreate"`** cria o relacionado quando ele não existe. É o default quando a relation tem [`fkThere`](#fkhere-e-fkthere), já que o registro relacionado é o que guarda a FK.
 - **`"upsert"`** é a que **sobrescreve** o relacionado com os campos enviados.
 - Quando o próprio registro dono está sendo criado (`create`, ou o ramo `create` do `save`), um relacionado com `pk` sempre vira `connectOrCreate`.
 
@@ -196,15 +196,13 @@ O que enviar `null` pra uma relation to-one faz no update:
 - **`"disconnect"`** (default) — desanexa o registro relacionado e o mantém. O Prisma rejeita quando a relation é obrigatória.
 - **`"delete"`** — apaga o registro relacionado. Existe pra `oto` e `mto`, e é sempre opt-in. Cuidado num `mto`: o relacionado é compartilhado com outras linhas, então apagar afeta todas elas, e o Prisma rejeita a escrita enquanto outras linhas ainda o referenciam (a menos que a FK tenha uma ação referencial como `onDelete: Cascade`).
 
-#### Ignorando uma relation (`"ignore"`)
+#### Deixando uma relation fora das escritas
 
-Definir uma relation como `"ignore"` deixa o campo fora de toda escrita (`create`, `update`, `save`...): o objeto (ou array) é simplesmente descartado. Serve pra uma relation que você **carrega** mas não quer **persistir** por essa entidade.
+Uma relation que **não tem entrada** em `relations` fica fora de toda escrita (`create`, `update`, `save`...): o objeto (ou array) é simplesmente descartado. Serve pra uma relation que você **carrega** mas não quer **persistir** por essa entidade — basta não configurá-la.
 
 ```typescript
-// AddressRepository
-relations: {
-    user: "ignore";
-}
+// AddressRepository: `user` é carregado mas nunca escrito
+new Prisma7Adapter(prisma, { modelName: "address", pkName: "id" });
 ```
 
 Como o objeto de relation é descartado, uma FK escalar no payload (`userId`) passa como está, junto da primary key. Isso faz dela a forma mais simples de contornar o [problema do `allowOmitPk`](#allowomitpk) quando você só quer manter a FK: `address.save(addressCarregadoComUser)` atualiza o address e nunca toca no user.
@@ -246,7 +244,7 @@ O `fkHere` tem mais uma consequência, pra primary key — leia a próxima seç�
 
 **Formas de contornar, sem `allowOmitPk`:**
 
-1. **Ignorar a relation** quando você só quer manter a FK: `relations: { user: "ignore" }` (veja [Ignorando uma relation](#ignorando-uma-relation-ignore)). O payload mantém `id` e `userId`, e a entidade relacionada não é escrita.
+1. **Deixar a relation fora do `relations`** quando você só quer manter a FK (veja [Deixando uma relation fora das escritas](#deixando-uma-relation-fora-das-escritas)). O payload mantém `id` e `userId`, e a entidade relacionada não é escrita.
 2. **Enviar a FK escalar no lugar do objeto de relation.** `address.save({ id, city, userId })` mantém `id` e `userId`, já que não há objeto de relation. Persista a entidade relacionada por conta própria (pelo repository dela) quando ela também mudou — de preferência numa só `transaction`.
 3. **Enviar só o que mudou.** `address.update({ id }, { city })` não carrega nem a primary key nem a relation.
 4. **Salvar pelo outro lado.** `user.save({ ...user, address })` mantém as primary keys (configure o `fkThere` lá): a FK fica em `Address`, então `User` não tem FK própria pra conflitar.

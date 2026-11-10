@@ -93,7 +93,7 @@ type ToOneOptions<K> = {
     fkHere?: (KeysOfType<K, Primitive> & string) | (string & {});
     /**
      * How the related record is written on update when the payload has its `pk`.
-     * @default "connect"
+     * @default "connectOrCreate" when `fkThere` is set, "connect" otherwise
      */
     onUpdate?: ToOneStrategy;
     /**
@@ -119,8 +119,8 @@ type ToManyOptions = {
  *   `onDisconnect` ({@link DisconnectStrategy}).
  * - `otm` and `mtm`: `fkThere` and `onUpdate` ({@link ToManyStrategy}).
  *
- * Set a relation to `"ignore"` in `AdapterRelations` to leave it out of every
- * write (see `AdapterRelations`).
+ * A relation field that has no config in `AdapterRelations` is left out of
+ * every write (see `AdapterRelations`).
  *
  * @template T Type of the related entity.
  * @template K Type of the entity that owns the relation field.

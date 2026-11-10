@@ -38,8 +38,13 @@ const DELEGATE_METHODS = [
     "aggregate",
 ] as const;
 
-function createDelegate(): Record<(typeof DELEGATE_METHODS)[number], ReturnType<typeof vi.fn>> {
-    const delegate: any = {};
+/** Scalar fields exposed by the fake delegate, like `prisma.user.fields` on a generated client. */
+const USER_FIELDS = ["id", "name", "email", "age", "score", "addressId"] as const;
+
+function createDelegate(): Record<(typeof DELEGATE_METHODS)[number], ReturnType<typeof vi.fn>> & {
+    fields: Record<string, unknown>;
+} {
+    const delegate: any = { fields: Object.fromEntries(USER_FIELDS.map(name => [name, {}])) };
     for (const method of DELEGATE_METHODS) delegate[method] = vi.fn();
     return delegate;
 }
@@ -123,6 +128,26 @@ describe("VSRepoPrisma7Adapter", () => {
             const create = () => setup({ modelName: "unknown" });
 
             expect(create).toThrow(VSRepoAdapterError);
+            expect(create).toThrow(expect.objectContaining({ code: AdapterErrorCode.MODEL_NOT_FOUND }));
+        });
+
+        it("should throw FIELD_NOT_FOUND when pkName is not a field of the model", () => {
+            const create = () => setup({ pkName: "uuid" });
+
+            expect(create).toThrow(VSRepoAdapterError);
+            expect(create).toThrow(expect.objectContaining({ code: AdapterErrorCode.FIELD_NOT_FOUND }));
+        });
+
+        it("should throw MODEL_NOT_FOUND when the model delegate has no fields metadata", () => {
+            const { user } = setup();
+            delete (user as any).fields;
+
+            const create = () =>
+                new VSRepoPrisma7Adapter<User>({ user, _engineConfig: { activeProvider: "postgresql" } } as any, {
+                    modelName: "user",
+                    pkName: "id",
+                });
+
             expect(create).toThrow(expect.objectContaining({ code: AdapterErrorCode.MODEL_NOT_FOUND }));
         });
 
@@ -366,7 +391,8 @@ describe("VSRepoPrisma7Adapter", () => {
                 await expect(run(adapter)).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
 
                 for (const delegate of [user, txUser]) {
-                    for (const fn of Object.values(delegate)) expect(fn).not.toHaveBeenCalled();
+                    for (const [name, fn] of Object.entries(delegate))
+                        if (name !== "fields") expect(fn).not.toHaveBeenCalled();
                 }
             });
         });
@@ -726,13 +752,25 @@ describe("VSRepoPrisma7Adapter", () => {
             });
         });
 
-        it("should leave out of the write a relation configured as 'ignore'", async () => {
-            const { adapter, user } = setup({ relations: { address: "ignore" } });
+        it("should leave out of the write a key that is neither a model field nor a configured relation", async () => {
+            const { adapter, user } = setup();
             user.update!.mockResolvedValue({});
 
             await adapter.update({ id: "1" }, { name: "John", address: { id: "10", street: "Rua A" } } as any);
 
             expect(user.update).toHaveBeenCalledWith({ where: { id: "1" }, data: { name: "John" } });
+        });
+
+        it("should still write a relation that is configured, even though it is not a model field", async () => {
+            const { adapter, user } = setup({ relations: relationsConfig });
+            user.update!.mockResolvedValue({});
+
+            await adapter.update({ id: "1" }, { name: "John", address: { id: "10", street: "Rua A" } } as any);
+
+            expect(user.update).toHaveBeenCalledWith({
+                where: { id: "1" },
+                data: { name: "John", address: { connect: { id: "10" } } },
+            });
         });
 
         it("should map P2025 to NOT_FOUND", async () => {

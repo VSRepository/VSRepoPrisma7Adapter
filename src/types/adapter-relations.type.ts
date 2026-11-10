@@ -5,16 +5,15 @@ import { Relation } from "./relation.type.js";
  * Relation configuration for entity `T`, used by the write parsers to resolve
  * relation fields into Prisma nested writes (see `Relation`).
  *
- * Keyed by the relation fields of `T` (`RelationKeys<T>`). Each value is either:
+ * Keyed by the relation fields of `T` (`RelationKeys<T>`); each value is a
+ * `Relation` config, whose options depend on its `mode`.
  *
- * - a `Relation` config, whose options depend on its `mode`; or
- * - `"ignore"`, which leaves the field out of every write (`create`, `update`,
- *   `save`...). Use it for a relation you load but don't want to persist
- *   through this entity. Since the relation object is dropped, a scalar FK in
- *   the payload (e.g. `userId`) is sent as is, together with the primary key.
- *
- * Without this configuration (adapter built without `relations`), relation
- * fields are passed through to Prisma as-is, with no special resolution.
+ * A relation that is not configured here is left out of every write
+ * (`create`, `update`, `save`...): the adapter only writes the scalar fields
+ * of the model and the relations configured in this object. To load a
+ * relation without persisting it through this entity, just don't configure it.
+ * Since the relation object is dropped, a scalar FK in the payload (e.g.
+ * `userId`) is sent as is, together with the primary key.
  *
  * @publicApi
  */

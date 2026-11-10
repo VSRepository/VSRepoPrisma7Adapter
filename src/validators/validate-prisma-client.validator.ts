@@ -20,8 +20,28 @@ export function validatePrismaClient(prisma: unknown, modelName: string, pkName:
         );
     }
 
-    if (!(pkName in delegate.fields)) {
-        // Todo: melhorar erro
-        throw new Error();
+    const fields = delegate.fields;
+
+    if (typeof fields !== "object" || fields === null) {
+        throw new VSRepoAdapterError(
+            `Invalid Prisma client: 'prisma.${modelName}' has no 'fields' metadata, which the adapter needs to ` +
+                `know the scalar fields of '${modelName}' (expected a Prisma 7 generated client delegate).`,
+            AdapterErrorCode.MODEL_NOT_FOUND,
+            null,
+        );
+    }
+
+    if (!(pkName in fields)) {
+        const available = Object.keys(fields)
+            .map(name => `'${name}'`)
+            .join(", ");
+
+        throw new VSRepoAdapterError(
+            `Invalid constructor config (pkName): no field '${pkName}' found on model '${modelName}' ` +
+                `(expected 'pkName' to match a scalar field of '${modelName}' in your Prisma schema; ` +
+                `available fields: ${available || "none"}).`,
+            AdapterErrorCode.FIELD_NOT_FOUND,
+            null,
+        );
     }
 }

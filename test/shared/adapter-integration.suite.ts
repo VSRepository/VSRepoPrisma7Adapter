@@ -1089,20 +1089,19 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             }
         });
 
-        describe("ignoring a relation", () => {
-            it("should save an owner record loaded with its relation, keeping its pk, when the relation is 'ignore'", async () => {
+        describe("a relation that is not configured", () => {
+            it("should save an owner record loaded with its relation, keeping its pk, when the relation is not configured", async () => {
                 const { john, address } = await seedOwnedAddressWithUser();
-                const ignoring = new VSRepoPrisma7Adapter<AddressRow>(prisma, {
+                const withoutRelations = new VSRepoPrisma7Adapter<AddressRow>(prisma, {
                     modelName: "address",
                     pkName: "id",
-                    relations: { user: "ignore" },
                     logLevel: VSLogLevel.NONE,
                 });
-                const loaded = (await ignoring.findOne({ id: address.id }, { relations: { user: true } }))!;
+                const loaded = (await withoutRelations.findOne({ id: address.id }, { relations: { user: true } }))!;
                 loaded.city = "Estância";
                 loaded.user!.name = "Never persisted";
 
-                await ignoring.save(loaded);
+                await withoutRelations.save(loaded);
 
                 await expect(prisma.address.findUnique({ where: { id: address.id } })).resolves.toMatchObject({
                     city: "Estância",
