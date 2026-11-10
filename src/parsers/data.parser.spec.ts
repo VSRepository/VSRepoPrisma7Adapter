@@ -52,14 +52,30 @@ function ownerRel(fkHere: string, extra: Record<string, unknown> = {}): Relation
     return rel("mto", undefined, { fkHere, ...extra });
 }
 
+/**
+ * Runs `parsePrismaWriteData` with `knownKeys` defaulting to every key of the
+ * payload plus the configured relations, so a test only deals with the
+ * filtering of unknown keys when it passes `knownKeys` explicitly.
+ */
+function parse(
+    obj: Record<string, unknown>,
+    pkName: string,
+    relationsConfig?: AdapterRelations<User>,
+    omitPkInUpdate?: boolean,
+    allowOmitPkWhenNeeded?: boolean,
+    knownKeys: ReadonlySet<string> = new Set([...Object.keys(obj), ...Object.keys(relationsConfig ?? {})]),
+) {
+    return parsePrismaWriteData(obj, pkName, knownKeys, relationsConfig, omitPkInUpdate, allowOmitPkWhenNeeded);
+}
+
 describe("parsePrismaWriteData", () => {
     describe("plain fields", () => {
         it("should return empty create/update for an empty object", () => {
-            expect(parsePrismaWriteData({}, "id")).toEqual({ create: {}, update: {} });
+            expect(parse({}, "id")).toEqual({ create: {}, update: {} });
         });
 
         it("should copy plain fields to both create and update", () => {
-            const result = parsePrismaWriteData({ name: "John", age: 30 }, "id");
+            const result = parse({ name: "John", age: 30 }, "id");
 
             expect(result).toEqual({
                 create: { name: "John", age: 30 },
@@ -68,63 +84,70 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should skip undefined fields", () => {
-            const result = parsePrismaWriteData({ name: "John", age: undefined }, "id");
+            const result = parse({ name: "John", age: undefined }, "id");
 
             expect(result.create).toEqual({ name: "John" });
             expect(result.update).toEqual({ name: "John" });
         });
 
         it("should keep null values", () => {
-            const result = parsePrismaWriteData({ name: null }, "id");
+            const result = parse({ name: null }, "id");
 
             expect(result).toEqual({ create: { name: null }, update: { name: null } });
         });
 
         it("should include the pk in update by default", () => {
-            const result = parsePrismaWriteData({ id: "1", name: "John" }, "id");
+            const result = parse({ id: "1", name: "John" }, "id");
 
             expect(result.create).toEqual({ id: "1", name: "John" });
             expect(result.update).toEqual({ id: "1", name: "John" });
         });
 
         it("should omit the pk in update when omitPkInUpdate is true", () => {
-            const result = parsePrismaWriteData({ id: "1", name: "John" }, "id", undefined, true);
+            const result = parse({ id: "1", name: "John" }, "id", undefined, true);
 
             expect(result.create).toEqual({ id: "1", name: "John" });
             expect(result.update).toEqual({ name: "John" });
         });
 
         it("should only omit the field named as pk in update", () => {
-            const result = parsePrismaWriteData({ id: "1", code: "abc" }, "code", undefined, true);
+            const result = parse({ id: "1", code: "abc" }, "code", undefined, true);
 
             expect(result.create).toEqual({ id: "1", code: "abc" });
             expect(result.update).toEqual({ id: "1" });
         });
 
-        it("should pass relation fields through when no relations config is given", () => {
-            const posts = [{ id: "1", title: "A" }];
+        it("should drop fields that are not in knownKeys", () => {
+            const result = parse(
+                { name: "John", posts: [{ id: "1", title: "A" }] },
+                "id",
+                undefined,
+                false,
+                false,
+                new Set(["name"]),
+            );
 
-            const result = parsePrismaWriteData({ name: "John", posts }, "id");
-
-            expect(result.create).toEqual({ name: "John", posts });
-            expect(result.update).toEqual({ name: "John", posts });
+            expect(result).toEqual({ create: { name: "John" }, update: { name: "John" } });
         });
 
-        it("should pass through fields that are not configured as relations", () => {
-            const result = parsePrismaWriteData(
+        it("should drop a relation field that is neither a model field nor configured in relations", () => {
+            const result = parse(
                 { name: "John", posts: [{ title: "A" }] },
                 "id",
                 relations({ address: rel("mto") }),
+                false,
+                false,
+                new Set(["name", "address"]),
             );
 
-            expect(result.create).toEqual({ name: "John", posts: [{ title: "A" }] });
-            expect(result.update).toEqual({ name: "John", posts: [{ title: "A" }] });
+            expect(result.create).toEqual({ name: "John" });
+            expect(result.update).toEqual({ name: "John" });
         });
 
         it("should keep Date values by reference", () => {
             const date = new Date("2026-01-01T00:00:00.000Z");
 
-            const result = parsePrismaWriteData({ createdAt: date }, "id");
+            const result = parse({ createdAt: date }, "id");
 
             expect(result.create.createdAt).toBe(date);
             expect(result.update.createdAt).toBe(date);
@@ -134,13 +157,13 @@ describe("parsePrismaWriteData", () => {
     describe("to-one relations (oto / mto)", () => {
         describe("null value", () => {
             it.each(["oto", "mto"] as const)("should resolve to disconnect on update by default for %s", mode => {
-                const result = parsePrismaWriteData({ address: null }, "id", relations({ address: rel(mode) }));
+                const result = parse({ address: null }, "id", relations({ address: rel(mode) }));
 
                 expect(result.update).toEqual({ address: { disconnect: true } });
             });
 
             it("should resolve to disconnect on update when onDisconnect is 'disconnect'", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { profile: null },
                     "id",
                     relations({ profile: rel("oto", undefined, { onDisconnect: "disconnect" }) }),
@@ -150,7 +173,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should resolve to delete on update for an oto when onDisconnect is 'delete'", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { profile: null },
                     "id",
                     relations({ profile: rel("oto", undefined, { onDisconnect: "delete" }) }),
@@ -160,7 +183,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should resolve to delete on update for an mto when onDisconnect is 'delete'", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { address: null },
                     "id",
                     relations({ address: rel("mto", undefined, { onDisconnect: "delete" }) }),
@@ -170,8 +193,8 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should keep disconnecting an mto by default and when onDisconnect is 'disconnect'", () => {
-                const byDefault = parsePrismaWriteData({ address: null }, "id", relations({ address: rel("mto") }));
-                const explicit = parsePrismaWriteData(
+                const byDefault = parse({ address: null }, "id", relations({ address: rel("mto") }));
+                const explicit = parse(
                     { address: null },
                     "id",
                     relations({ address: rel("mto", undefined, { onDisconnect: "disconnect" }) }),
@@ -182,7 +205,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should not depend on onUpdate to resolve null", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { profile: null },
                     "id",
                     relations({ profile: rel("oto", "upsert", { onDisconnect: "delete" }) }),
@@ -199,7 +222,7 @@ describe("parsePrismaWriteData", () => {
             ] as const)(
                 "should not set the field in create for a null %s relation (onDisconnect: %s)",
                 (mode, onDisconnect) => {
-                    const result = parsePrismaWriteData(
+                    const result = parse(
                         { address: null },
                         "id",
                         relations({ address: rel(mode, undefined, { onDisconnect }) }),
@@ -214,13 +237,13 @@ describe("parsePrismaWriteData", () => {
             const address = { street: "Rua A" };
 
             it("should resolve to create on create", () => {
-                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto") }));
+                const result = parse({ address }, "id", relations({ address: rel("mto") }));
 
                 expect(result.create).toEqual({ address: { create: address } });
             });
 
             it("should resolve to create on update by default", () => {
-                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto") }));
+                const result = parse({ address }, "id", relations({ address: rel("mto") }));
 
                 expect(result.update).toEqual({ address: { create: address } });
             });
@@ -228,24 +251,20 @@ describe("parsePrismaWriteData", () => {
             it.each(["connect", "connectOrCreate"] as const)(
                 "should resolve to create on update when onUpdate is '%s' (nothing to connect to)",
                 onUpdate => {
-                    const result = parsePrismaWriteData(
-                        { address },
-                        "id",
-                        relations({ address: rel("mto", onUpdate) }),
-                    );
+                    const result = parse({ address }, "id", relations({ address: rel("mto", onUpdate) }));
 
                     expect(result.update).toEqual({ address: { create: address } });
                 },
             );
 
             it("should resolve to upsert on update when onUpdate is 'upsert'", () => {
-                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto", "upsert") }));
+                const result = parse({ address }, "id", relations({ address: rel("mto", "upsert") }));
 
                 expect(result.update).toEqual({ address: { upsert: { create: address, update: address } } });
             });
 
             it("should treat an undefined pk the same as a missing pk", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { address: { id: undefined, street: "Rua A" } },
                     "id",
                     relations({ address: rel("oto") }),
@@ -257,8 +276,8 @@ describe("parsePrismaWriteData", () => {
             it.each([undefined, ...TO_ONE_STRATEGIES])(
                 "should behave the same for oto and mto (onUpdate: %s)",
                 onUpdate => {
-                    const asOto = parsePrismaWriteData({ address }, "id", relations({ address: rel("oto", onUpdate) }));
-                    const asMto = parsePrismaWriteData({ address }, "id", relations({ address: rel("mto", onUpdate) }));
+                    const asOto = parse({ address }, "id", relations({ address: rel("oto", onUpdate) }));
+                    const asMto = parse({ address }, "id", relations({ address: rel("mto", onUpdate) }));
 
                     expect(asOto).toEqual(asMto);
                 },
@@ -273,34 +292,26 @@ describe("parsePrismaWriteData", () => {
             it.each([undefined, ...TO_ONE_STRATEGIES])(
                 "should resolve to connectOrCreate on create whatever onUpdate is (%s)",
                 onUpdate => {
-                    const result = parsePrismaWriteData(
-                        { address },
-                        "id",
-                        relations({ address: rel("mto", onUpdate) }),
-                    );
+                    const result = parse({ address }, "id", relations({ address: rel("mto", onUpdate) }));
 
                     expect(result.create).toEqual({ address: { connectOrCreate } });
                 },
             );
 
             it.each(["oto", "mto"] as const)("should default onUpdate to 'connect' for %s", mode => {
-                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel(mode) }));
+                const result = parse({ address }, "id", relations({ address: rel(mode) }));
 
                 expect(result.update).toEqual({ address: { connect: where } });
             });
 
             it("should only connect, without sending the related fields, when onUpdate is 'connect'", () => {
-                const result = parsePrismaWriteData({ address }, "id", relations({ address: rel("oto", "connect") }));
+                const result = parse({ address }, "id", relations({ address: rel("oto", "connect") }));
 
                 expect(result.update).toEqual({ address: { connect: { id: "10" } } });
             });
 
             it("should resolve to connectOrCreate on update when onUpdate is 'connectOrCreate'", () => {
-                const result = parsePrismaWriteData(
-                    { address },
-                    "id",
-                    relations({ address: rel("oto", "connectOrCreate") }),
-                );
+                const result = parse({ address }, "id", relations({ address: rel("oto", "connectOrCreate") }));
 
                 expect(result.update).toEqual({ address: { connectOrCreate } });
             });
@@ -308,7 +319,7 @@ describe("parsePrismaWriteData", () => {
             it.each(["oto", "mto"] as const)(
                 "should resolve to upsert (without pk in update) on update when onUpdate is 'upsert' for %s",
                 mode => {
-                    const result = parsePrismaWriteData({ address }, "id", relations({ address: rel(mode, "upsert") }));
+                    const result = parse({ address }, "id", relations({ address: rel(mode, "upsert") }));
 
                     expect(result.update).toEqual({
                         address: { upsert: { where, create: address, update: { street: "Rua A" } } },
@@ -320,11 +331,7 @@ describe("parsePrismaWriteData", () => {
                 const tag = { code: "x", name: "Tag" };
 
                 const build = (onUpdate: ToOneStrategy) =>
-                    parsePrismaWriteData(
-                        { address: tag },
-                        "id",
-                        relations({ address: rel("mto", onUpdate, { pk: "code" }) }),
-                    );
+                    parse({ address: tag }, "id", relations({ address: rel("mto", onUpdate, { pk: "code" }) }));
 
                 expect(build("connect").create).toEqual({
                     address: { connectOrCreate: { where: { code: "x" }, create: tag } },
@@ -336,11 +343,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should treat falsy but defined pks (0, empty string) as present", () => {
-                const result = parsePrismaWriteData(
-                    { address: { id: 0, street: "Rua A" } },
-                    "id",
-                    relations({ address: rel("mto") }),
-                );
+                const result = parse({ address: { id: 0, street: "Rua A" } }, "id", relations({ address: rel("mto") }));
 
                 expect(result.create).toEqual({
                     address: { connectOrCreate: { where: { id: 0 }, create: { id: 0, street: "Rua A" } } },
@@ -353,7 +356,7 @@ describe("parsePrismaWriteData", () => {
                 const nullWhere = { id: null };
 
                 const run = (onUpdate?: ToOneStrategy) =>
-                    parsePrismaWriteData({ address: nullPk }, "id", relations({ address: rel("mto", onUpdate) }));
+                    parse({ address: nullPk }, "id", relations({ address: rel("mto", onUpdate) }));
 
                 expect(run().create).toEqual({ address: { connectOrCreate: { where: nullWhere, create: nullPk } } });
                 expect(run().update).toEqual({ address: { connect: nullWhere } });
@@ -368,7 +371,7 @@ describe("parsePrismaWriteData", () => {
             it.each(TO_ONE_STRATEGIES)("should not mutate the original related object (onUpdate: %s)", onUpdate => {
                 const original = { id: "10", street: "Rua A" };
 
-                parsePrismaWriteData({ address: original }, "id", relations({ address: rel("mto", onUpdate) }));
+                parse({ address: original }, "id", relations({ address: rel("mto", onUpdate) }));
 
                 expect(original).toEqual({ id: "10", street: "Rua A" });
             });
@@ -386,7 +389,7 @@ describe("parsePrismaWriteData", () => {
                 ["mtm", "add"],
                 ["mtm", "set"],
             ] as const)("should split items into create/connectOrCreate for %s/%s", (mode, restriction) => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { posts: [withPk, withoutPk] },
                     "id",
                     relations({ posts: rel(mode, restriction) }),
@@ -403,11 +406,7 @@ describe("parsePrismaWriteData", () => {
 
         describe("otm", () => {
             it("should resolve update to create + upsert when restriction is 'add'", () => {
-                const result = parsePrismaWriteData(
-                    { posts: [withPk, withoutPk] },
-                    "id",
-                    relations({ posts: rel("otm", "add") }),
-                );
+                const result = parse({ posts: [withPk, withoutPk] }, "id", relations({ posts: rel("otm", "add") }));
 
                 expect(result.update).toEqual({
                     posts: {
@@ -418,11 +417,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should resolve update to deleteMany + create + upsert when restriction is 'set'", () => {
-                const result = parsePrismaWriteData(
-                    { posts: [withPk, withoutPk] },
-                    "id",
-                    relations({ posts: rel("otm", "set") }),
-                );
+                const result = parse({ posts: [withPk, withoutPk] }, "id", relations({ posts: rel("otm", "set") }));
 
                 expect(result.update).toEqual({
                     posts: {
@@ -434,7 +429,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should list every pk in deleteMany.notIn", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { posts: [{ id: "1", title: "A" }, { id: "2", title: "B" }, withoutPk] },
                     "id",
                     relations({ posts: rel("otm", "set") }),
@@ -444,7 +439,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should delete everything not sent when restriction is 'set' and the array is empty", () => {
-                const result = parsePrismaWriteData({ posts: [] }, "id", relations({ posts: rel("otm", "set") }));
+                const result = parse({ posts: [] }, "id", relations({ posts: rel("otm", "set") }));
 
                 expect(result.update).toEqual({
                     posts: { deleteMany: { id: { notIn: [] } }, create: [], upsert: [] },
@@ -452,13 +447,13 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should not include deleteMany when restriction is 'add' and the array is empty", () => {
-                const result = parsePrismaWriteData({ posts: [] }, "id", relations({ posts: rel("otm", "add") }));
+                const result = parse({ posts: [] }, "id", relations({ posts: rel("otm", "add") }));
 
                 expect(result.update).toEqual({ posts: { create: [], upsert: [] } });
             });
 
             it("should only create when no item has a pk", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { posts: [{ title: "A" }, { title: "B" }] },
                     "id",
                     relations({ posts: rel("otm", "add") }),
@@ -476,7 +471,7 @@ describe("parsePrismaWriteData", () => {
                 const tagWithPk = { code: "x", name: "X" };
                 const tagWithoutPk = { name: "Y" };
 
-                const result = parsePrismaWriteData(
+                const result = parse(
                     { tags: [tagWithPk, tagWithoutPk] },
                     "id",
                     relations({ tags: rel("otm", "set", { pk: "code" }) }),
@@ -497,7 +492,7 @@ describe("parsePrismaWriteData", () => {
             it("should treat a null pk as present (only undefined means absent)", () => {
                 const nullPk = { id: null, title: "A" };
 
-                const result = parsePrismaWriteData({ posts: [nullPk] }, "id", relations({ posts: rel("otm", "add") }));
+                const result = parse({ posts: [nullPk] }, "id", relations({ posts: rel("otm", "add") }));
 
                 expect(result.create).toEqual({
                     posts: { create: [], connectOrCreate: [{ where: { id: null }, create: nullPk }] },
@@ -511,7 +506,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should preserve the order of items", () => {
-                const result = parsePrismaWriteData(
+                const result = parse(
                     {
                         posts: [
                             { id: "3", title: "C" },
@@ -529,11 +524,7 @@ describe("parsePrismaWriteData", () => {
 
         describe("mtm", () => {
             it("should resolve update to create + connectOrCreate when restriction is 'add'", () => {
-                const result = parsePrismaWriteData(
-                    { posts: [withPk, withoutPk] },
-                    "id",
-                    relations({ posts: rel("mtm", "add") }),
-                );
+                const result = parse({ posts: [withPk, withoutPk] }, "id", relations({ posts: rel("mtm", "add") }));
 
                 expect(result.update).toEqual({
                     posts: {
@@ -544,11 +535,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should resolve update to set [] + create + connectOrCreate when restriction is 'set'", () => {
-                const result = parsePrismaWriteData(
-                    { posts: [withPk, withoutPk] },
-                    "id",
-                    relations({ posts: rel("mtm", "set") }),
-                );
+                const result = parse({ posts: [withPk, withoutPk] }, "id", relations({ posts: rel("mtm", "set") }));
 
                 expect(result.update).toEqual({
                     posts: {
@@ -560,17 +547,13 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should disconnect everything when restriction is 'set' and the array is empty", () => {
-                const result = parsePrismaWriteData({ posts: [] }, "id", relations({ posts: rel("mtm", "set") }));
+                const result = parse({ posts: [] }, "id", relations({ posts: rel("mtm", "set") }));
 
                 expect(result.update).toEqual({ posts: { set: [], create: [], connectOrCreate: [] } });
             });
 
             it("should never use upsert or deleteMany", () => {
-                const result = parsePrismaWriteData(
-                    { posts: [withPk, withoutPk] },
-                    "id",
-                    relations({ posts: rel("mtm", "set") }),
-                );
+                const result = parse({ posts: [withPk, withoutPk] }, "id", relations({ posts: rel("mtm", "set") }));
 
                 expect(result.update.posts).not.toHaveProperty("upsert");
                 expect(result.update.posts).not.toHaveProperty("deleteMany");
@@ -581,7 +564,7 @@ describe("parsePrismaWriteData", () => {
             const original = [{ id: "1", title: "A" }, { title: "B" }];
             const snapshot = JSON.parse(JSON.stringify(original));
 
-            parsePrismaWriteData({ posts: original }, "id", relations({ posts: rel("otm", "set") }));
+            parse({ posts: original }, "id", relations({ posts: rel("otm", "set") }));
 
             expect(original).toEqual(snapshot);
         });
@@ -589,7 +572,7 @@ describe("parsePrismaWriteData", () => {
 
     describe("mixed payloads", () => {
         it("should handle plain fields and several relations together", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 {
                     id: "1",
                     name: "John",
@@ -629,7 +612,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should skip undefined relation fields", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { name: "John", posts: undefined, address: undefined },
                 "id",
                 relations({ posts: rel("otm", "set"), address: rel("mto", "upsert") }),
@@ -639,7 +622,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should not apply omitPkInUpdate to relation fields", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { id: "1", posts: [{ id: "2", title: "A" }] },
                 "id",
                 relations({ posts: rel("otm", "add") }),
@@ -655,7 +638,7 @@ describe("parsePrismaWriteData", () => {
         const address = { street: "Rua A" };
 
         it("should default onUpdate to 'connect' for a to-one relation", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { address: { id: "10", ...address } },
                 "id",
                 relations({ address: { mode: "mto", pk: "id" } }),
@@ -664,8 +647,42 @@ describe("parsePrismaWriteData", () => {
             expect(result.update).toEqual({ address: { connect: { id: "10" } } });
         });
 
+        it("should default onUpdate to 'connectOrCreate' for a to-one relation with fkThere", () => {
+            const result = parse(
+                { address: { id: "10", ...address, userId: "1" } },
+                "id",
+                relations({ address: { mode: "oto", pk: "id", fkThere: "userId" } as Relation<any> }),
+            );
+
+            expect(result.update).toEqual({
+                address: { connectOrCreate: { where: { id: "10" }, create: { id: "10", ...address } } },
+            });
+        });
+
+        it("should default onUpdate to 'connect' for a to-one relation with fkHere", () => {
+            const result = parse(
+                { street: "Rua A", userId: "1", user: { id: "1", name: "John" } },
+                "id",
+                relations({ user: { mode: "mto", pk: "id", fkHere: "userId" } as Relation<any> }),
+            );
+
+            expect(result.update).toEqual({ street: "Rua A", user: { connect: { id: "1" } } });
+        });
+
+        it("should let onUpdate win over the fkThere default", () => {
+            const result = parse(
+                { address: { id: "10", ...address, userId: "1" } },
+                "id",
+                relations({
+                    address: { mode: "oto", pk: "id", fkThere: "userId", onUpdate: "connect" } as Relation<any>,
+                }),
+            );
+
+            expect(result.update).toEqual({ address: { connect: { id: "10" } } });
+        });
+
         it("should default onUpdate to 'add' for a to-many relation", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { posts: [{ id: "1", title: "A" }] },
                 "id",
                 relations({ posts: { mode: "otm", pk: "id" } }),
@@ -675,51 +692,72 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should default onDisconnect to 'disconnect'", () => {
-            const result = parsePrismaWriteData(
-                { address: null },
-                "id",
-                relations({ address: { mode: "oto", pk: "id" } }),
-            );
+            const result = parse({ address: null }, "id", relations({ address: { mode: "oto", pk: "id" } }));
 
             expect(result.update).toEqual({ address: { disconnect: true } });
         });
     });
 
-    describe('"ignore"', () => {
-        it("should leave an ignored relation out of create and update", () => {
-            const result = parsePrismaWriteData(
+    describe("unknown keys", () => {
+        const known = new Set(["id", "name", "street", "userId"]);
+
+        it("should leave a non-configured relation object out of create and update", () => {
+            const result = parse(
                 { name: "John", address: { id: "10", street: "Rua A" }, posts: [{ title: "A" }] },
                 "id",
-                { address: "ignore" } as unknown as AdapterRelations<User>,
+                undefined,
+                false,
+                false,
+                known,
             );
 
-            expect(result.create).toEqual({ name: "John", posts: [{ title: "A" }] });
-            expect(result.update).toEqual({ name: "John", posts: [{ title: "A" }] });
+            expect(result).toEqual({ create: { name: "John" }, update: { name: "John" } });
         });
 
-        it("should keep the pk and the scalar FK, without allowOmitPk, when the owner relation is ignored", () => {
-            const result = parsePrismaWriteData(
+        it("should keep the pk and the scalar FK, without allowOmitPk, when the owner relation is not configured", () => {
+            const result = parse(
                 { id: "114", street: "Rua A", userId: "1", user: { id: "1", name: "John" } },
                 "id",
-                { user: "ignore" } as unknown as AdapterRelations<User>,
+                undefined,
+                false,
+                false,
+                known,
             );
 
             expect(result.create).toEqual({ id: "114", street: "Rua A", userId: "1" });
             expect(result.update).toEqual({ id: "114", street: "Rua A", userId: "1" });
         });
 
-        it("should accept null for an ignored relation", () => {
-            const result = parsePrismaWriteData({ name: "John", address: null }, "id", {
-                address: "ignore",
-            } as unknown as AdapterRelations<User>);
+        it("should accept null for a relation that is not configured", () => {
+            const result = parse({ name: "John", address: null }, "id", undefined, false, false, known);
 
             expect(result).toEqual({ create: { name: "John" }, update: { name: "John" } });
+        });
+
+        it("should drop a key that is unknown even when its value is a scalar", () => {
+            const result = parse({ name: "John", nope: 1 }, "id", undefined, false, false, known);
+
+            expect(result.create).not.toHaveProperty("nope");
+            expect(result.update).not.toHaveProperty("nope");
+        });
+
+        it("should still process a configured relation when it is in knownKeys", () => {
+            const result = parse(
+                { name: "John", address: { street: "Rua A" } },
+                "id",
+                relations({ address: rel("mto") }),
+                false,
+                false,
+                new Set([...known, "address"]),
+            );
+
+            expect(result.create).toEqual({ name: "John", address: { create: { street: "Rua A" } } });
         });
     });
 
     describe("fkThere (FK in the related entity)", () => {
         it("should strip fkThere from a to-one payload without pk", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { address: { street: "Rua A", userId: "1" } },
                 "id",
                 relations({ address: rel("oto", undefined, { fkThere: "userId" }) }),
@@ -730,7 +768,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should strip fkThere from a to-one payload with pk", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { address: { id: "10", street: "Rua A", userId: "1" } },
                 "id",
                 relations({ address: rel("oto", "upsert", { fkThere: "userId" }) }),
@@ -744,7 +782,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should strip fkThere from every item of a to-many payload", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 {
                     posts: [
                         { id: "1", title: "A", authorId: "1" },
@@ -768,17 +806,13 @@ describe("parsePrismaWriteData", () => {
         it("should not mutate the original related payload", () => {
             const address = { street: "Rua A", userId: "1" };
 
-            parsePrismaWriteData(
-                { address },
-                "id",
-                relations({ address: rel("oto", undefined, { fkThere: "userId" }) }),
-            );
+            parse({ address }, "id", relations({ address: rel("oto", undefined, { fkThere: "userId" }) }));
 
             expect(address).toEqual({ street: "Rua A", userId: "1" });
         });
 
         it("should not require allowOmitPk nor touch the primary key", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { id: "1", address: { street: "Rua A", userId: "1" } },
                 "id",
                 relations({ address: rel("oto", undefined, { fkThere: "userId" }) }),
@@ -793,25 +827,21 @@ describe("parsePrismaWriteData", () => {
         const user = { email: "a@a.com", name: "A" };
 
         it("should drop the fkHere field from create and update when the relation is in the payload", () => {
-            const result = parsePrismaWriteData(
-                { street: "Rua A", userId: "1", user },
-                "id",
-                relations({ user: ownerRel("userId") }),
-            );
+            const result = parse({ street: "Rua A", userId: "1", user }, "id", relations({ user: ownerRel("userId") }));
 
             expect(result.create).toEqual({ street: "Rua A", user: { create: user } });
             expect(result.update).toEqual({ street: "Rua A", user: { create: user } });
         });
 
         it("should drop fkHere even when the relation comes before it in the payload", () => {
-            const result = parsePrismaWriteData({ user, userId: "1" }, "id", relations({ user: ownerRel("userId") }));
+            const result = parse({ user, userId: "1" }, "id", relations({ user: ownerRel("userId") }));
 
             expect(result.create).not.toHaveProperty("userId");
             expect(result.update).not.toHaveProperty("userId");
         });
 
         it("should keep the fkHere field when the relation is not in the payload", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { id: "1", street: "Rua A", userId: "1" },
                 "id",
                 relations({ user: ownerRel("userId") }),
@@ -822,7 +852,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should keep the fkHere field when the relation is undefined", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { street: "Rua A", userId: "1", user: undefined },
                 "id",
                 relations({ user: ownerRel("userId") }),
@@ -832,7 +862,7 @@ describe("parsePrismaWriteData", () => {
         });
 
         it("should drop every fkHere field when there are several owner relations", () => {
-            const result = parsePrismaWriteData(
+            const result = parse(
                 { userId: "1", user, groupId: "2", group: { name: "G" } },
                 "id",
                 relations({ user: ownerRel("userId"), group: ownerRel("groupId") }),
@@ -847,14 +877,14 @@ describe("parsePrismaWriteData", () => {
             const config = relations({ user: ownerRel("userId") });
 
             it("should throw INVALID_DATA when the payload has the pk and allowOmitPk is not enabled", () => {
-                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(VSRepoAdapterError);
-                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(
+                expect(() => parse(payload, "id", config)).toThrow(VSRepoAdapterError);
+                expect(() => parse(payload, "id", config)).toThrow(
                     expect.objectContaining({ code: AdapterErrorCode.INVALID_DATA }),
                 );
             });
 
             it("should explain the problem and how to solve it in the error message", () => {
-                expect(() => parsePrismaWriteData(payload, "id", config)).toThrow(
+                expect(() => parse(payload, "id", config)).toThrow(
                     /primary key 'id'.*'user'.*allowOmitPk.*setGlobalConfig.*database-generated/s,
                 );
             });
@@ -863,17 +893,17 @@ describe("parsePrismaWriteData", () => {
                 const both = { ...payload, group: { name: "G" } };
                 const bothConfig = relations({ user: ownerRel("userId"), group: ownerRel("groupId") });
 
-                expect(() => parsePrismaWriteData(both, "id", bothConfig)).toThrow(/'user', 'group'/);
+                expect(() => parse(both, "id", bothConfig)).toThrow(/'user', 'group'/);
             });
 
             it("should throw even when omitPkInUpdate is true (the pk is still in create)", () => {
-                expect(() => parsePrismaWriteData(payload, "id", config, true)).toThrow(VSRepoAdapterError);
+                expect(() => parse(payload, "id", config, true)).toThrow(VSRepoAdapterError);
             });
 
             it("should throw when the owner relation is null and the pk is present", () => {
                 const nullable = relations({ user: ownerRel("userId") });
 
-                expect(() => parsePrismaWriteData({ id: "114", user: null }, "id", nullable)).toThrow(
+                expect(() => parse({ id: "114", user: null }, "id", nullable)).toThrow(
                     expect.objectContaining({ code: AdapterErrorCode.INVALID_DATA }),
                 );
             });
@@ -881,21 +911,21 @@ describe("parsePrismaWriteData", () => {
             it("should not throw when the payload has no pk", () => {
                 const { id: _id, ...withoutPk } = payload;
 
-                expect(() => parsePrismaWriteData(withoutPk, "id", config)).not.toThrow();
+                expect(() => parse(withoutPk, "id", config)).not.toThrow();
             });
 
             it("should not throw when the pk is undefined", () => {
-                expect(() => parsePrismaWriteData({ ...payload, id: undefined }, "id", config)).not.toThrow();
+                expect(() => parse({ ...payload, id: undefined }, "id", config)).not.toThrow();
             });
 
             it("should not throw when the pk is present but the owner relation is not in the payload", () => {
-                const result = parsePrismaWriteData({ id: "114", street: "Rua A", userId: "1" }, "id", config);
+                const result = parse({ id: "114", street: "Rua A", userId: "1" }, "id", config);
 
                 expect(result.create).toEqual({ id: "114", street: "Rua A", userId: "1" });
             });
 
             it("should drop the pk and the fkHere field from create and update when allowOmitPk is enabled", () => {
-                const result = parsePrismaWriteData(payload, "id", config, false, true);
+                const result = parse(payload, "id", config, false, true);
 
                 expect(result.create).toEqual({
                     street: "Rua A",
@@ -908,7 +938,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should drop the pk from create (and keep it out of update) with omitPkInUpdate and allowOmitPk", () => {
-                const result = parsePrismaWriteData(payload, "id", config, true, true);
+                const result = parse(payload, "id", config, true, true);
 
                 expect(result.create).not.toHaveProperty("id");
                 expect(result.update).not.toHaveProperty("id");
@@ -916,7 +946,7 @@ describe("parsePrismaWriteData", () => {
             });
 
             it("should only drop the entity pk, not the pk of the related record", () => {
-                const result = parsePrismaWriteData(payload, "id", config, false, true);
+                const result = parse(payload, "id", config, false, true);
 
                 expect(result.create.user.connectOrCreate.where).toEqual({ id: "1" });
                 expect(result.create.user.connectOrCreate.create).toHaveProperty("id", "1");
@@ -925,7 +955,7 @@ describe("parsePrismaWriteData", () => {
             it("should not mutate the original payload", () => {
                 const original = { ...payload };
 
-                parsePrismaWriteData(original, "id", config, false, true);
+                parse(original, "id", config, false, true);
 
                 expect(original).toEqual(payload);
             });

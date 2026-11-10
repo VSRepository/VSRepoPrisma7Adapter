@@ -6,6 +6,44 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev.2] - 2026-11-09
+
+### Added
+
+- **`pkName` is validated at construction.** A `pkName` that isn't a scalar field of the model (`prisma.<modelName>.fields`) throws a `VSRepoAdapterError` with code `FIELD_NOT_FOUND`, naming the model, the `pkName` and the fields that were found. A delegate without `fields` metadata (not a Prisma 7 generated client) throws `MODEL_NOT_FOUND`. Before, a wrong `pkName` only showed up later, as a failing query
+
+### Changed
+
+- **Only known keys are written.** On `create`, `update`, `upsert` and `save`, the adapter now sends to Prisma only the scalar fields of the model and the relations configured in `relations`. Any other key in the payload (e.g. a relation field you didn't configure, such as the `user` of an `Address` loaded with its `user`) is left out, instead of being sent as is and rejected by Prisma with `Unknown argument`. Filters (`where`) are not affected
+- **A to-one relation with `fkThere` now defaults `onUpdate` to `"connectOrCreate"`** (the related record is the one that holds the FK). Without `fkThere` (no FK config, or `fkHere`) the default stays `"connect"`. Set `onUpdate` to choose another one
+- **Stricter types for `pkName`, `pk`, `fkHere` and `fkThere`.** `pkName` only accepts primitive fields of the entity (`KeysOfType<T, Primitive>`), so a relation field is a compile error. `pk`, `fkHere` and `fkThere` suggest the primitive fields of the entity but still accept any string, since a related record may carry columns the entity type doesn't model
+- Detailed JSDoc for `Prisma7GlobalConfig`, README (EN and pt-BR) updated for all of the above, and unit tests migrated (the parser now receives the known keys; the fake delegates expose `fields`), with new tests for the pk validation, the unknown-key filtering, the new `fkThere` default and the type-level rules
+
+### Removed
+
+- **`"ignore"` as a relation config** (introduced in `2.0.0-dev.1`). A relation that isn't configured in `relations` is already left out of every write, so just don't configure it: the relation object is dropped and a scalar FK in the payload goes through together with the primary key, as `"ignore"` did. A `"ignore"` entry no longer compiles. The README sections on `"ignore"` and on the `allowOmitPk` workaround were updated
+
+---
+
+## [2.0.0-dev.2] - 2026-11-09 (Português)
+
+### Adicionado
+
+- **O `pkName` é validado na construção.** Um `pkName` que não é um campo escalar do model (`prisma.<modelName>.fields`) lança um `VSRepoAdapterError` com code `FIELD_NOT_FOUND`, informando o model, o `pkName` e os campos encontrados. Um delegate sem a metadata `fields` (que não é um client gerado do Prisma 7) lança `MODEL_NOT_FOUND`. Antes, um `pkName` errado só aparecia depois, como uma query que falhava
+
+### Alterado
+
+- **Só as chaves conhecidas são escritas.** No `create`, `update`, `upsert` e `save`, o adapter agora envia ao Prisma apenas os campos escalares do model e as relations configuradas em `relations`. Qualquer outra chave do payload (ex.: um campo de relação que você não configurou, como o `user` de um `Address` carregado com o `user`) fica de fora, em vez de ser enviada como está e rejeitada pelo Prisma com `Unknown argument`. Os filtros (`where`) não são afetados
+- **Uma relation to-one com `fkThere` agora tem `onUpdate` `"connectOrCreate"` como default** (o registro relacionado é o que guarda a FK). Sem `fkThere` (sem config de FK, ou com `fkHere`) o default continua `"connect"`. Defina `onUpdate` pra escolher outro
+- **Tipos mais estritos pra `pkName`, `pk`, `fkHere` e `fkThere`.** O `pkName` só aceita campos primitivos da entidade (`KeysOfType<T, Primitive>`), então um campo de relação é erro de compilação. `pk`, `fkHere` e `fkThere` sugerem os campos primitivos da entidade mas ainda aceitam qualquer string, já que um registro relacionado pode ter colunas que o tipo da entidade não modela
+- JSDoc detalhado do `Prisma7GlobalConfig`, README (EN e pt-BR) atualizados pra tudo isso, e testes unitários migrados (o parser agora recebe as chaves conhecidas; os delegates falsos expõem `fields`), com testes novos pra validação do pk, o filtro de chaves desconhecidas, o novo default do `fkThere` e as regras de tipo
+
+### Removido
+
+- **`"ignore"` como config de relation** (introduzido na `2.0.0-dev.1`). Uma relation que não está configurada em `relations` já fica fora de toda escrita, então basta não configurá-la: o objeto de relation é descartado e uma FK escalar no payload passa junto da primary key, como o `"ignore"` fazia. Uma entrada `"ignore"` não compila mais. As seções do README sobre `"ignore"` e sobre a forma de contornar o `allowOmitPk` foram atualizadas
+
+---
+
 ## [2.0.0-dev.1] - 2026-11-08
 
 ### Added
@@ -34,7 +72,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - **`save`/`create`/`update` failed with Prisma's `Unknown argument` validation error on to-one relations whose foreign key lives in the entity itself** (e.g. saving an `Address` loaded with its `user`), because the payload mixed the scalar FK and the primary key with the relation object. Relations configured with `fkHere`/`fkThere` now build a valid nested write
-- Unit tests migrated to the new options, type-level tests added for the `Relation` union, and integration tests added for `fkHere`/`fkThere`, `allowOmitPk`, `"ignore"` and the `onUpdate` strategies
+- Unit tests migrated to the new options and integration tests added for `fkHere`/`fkThere`, `allowOmitPk`, `"ignore"` and the `onUpdate` strategies
 
 ---
 
@@ -66,7 +104,7 @@ All notable changes to this project will be documented in this file.
 ### Corrigido
 
 - **`save`/`create`/`update` falhavam com o erro de validação `Unknown argument` do Prisma em relations to-one cuja foreign key fica na própria entidade** (ex.: salvar um `Address` carregado com seu `user`), porque o payload misturava a FK escalar e a primary key com o objeto de relation. Relations configuradas com `fkHere`/`fkThere` agora montam um nested write válido
-- Testes unitários migrados pras novas opções, testes de tipos adicionados pra união `Relation`, e testes de integração adicionados pra `fkHere`/`fkThere`, `allowOmitPk`, `"ignore"` e as estratégias de `onUpdate`
+- Testes unitários migrados pras novas opções e testes de integração adicionados pra `fkHere`/`fkThere`, `allowOmitPk`, `"ignore"` e as estratégias de `onUpdate`
 
 ---
 

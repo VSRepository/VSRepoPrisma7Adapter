@@ -25,8 +25,8 @@ function splitByPk(items: PlainObject[], pk: string): { withPk: PlainObject[]; w
     return { withPk, withoutPk };
 }
 
-/** `Relation.onUpdate` of a to-one relation when the config doesn't set one. */
-const DEFAULT_TO_ONE_STRATEGY = "connect";
+const DEFAULT_TO_ONE_FK_HERE_STRATEGY = "connect";
+const DEFAULT_TO_ONE_FK_THERE_STRATEGY = "connectOrCreate";
 /** `Relation.onUpdate` of a to-many relation when the config doesn't set one. */
 const DEFAULT_TO_MANY_STRATEGY = "add";
 /** `Relation.onDisconnect` of a to-one relation when the config doesn't set one. */
@@ -56,7 +56,9 @@ function parseToOneRelation(
     field: PlainObject | null,
     relation: Relation<any, any, "oto" | "mto">,
 ): { create?: PlainObject; update?: PlainObject } {
-    const updateStrategy = relation.onUpdate ?? DEFAULT_TO_ONE_STRATEGY;
+    const updateStrategy =
+        relation.onUpdate ??
+        (relation.fkThere !== undefined ? DEFAULT_TO_ONE_FK_THERE_STRATEGY : DEFAULT_TO_ONE_FK_HERE_STRATEGY);
 
     if (field === null) {
         const disconnectStrategy = relation.onDisconnect ?? DEFAULT_DISCONNECT_STRATEGY;
@@ -138,6 +140,7 @@ function parseToManyRelation(
 export function parsePrismaWriteData<T>(
     obj: PlainObject,
     pkName: string,
+    knownKeys: ReadonlySet<string>,
     relations?: AdapterRelations<T>,
     omitPkInUpdate = false,
     allowOmitPkWhenNeeded = false,
@@ -150,16 +153,15 @@ export function parsePrismaWriteData<T>(
     const keysToOmit: string[] = [];
 
     for (const [key, field] of Object.entries(obj)) {
-        if (field === undefined) continue;
+        if (field === undefined || !knownKeys.has(key)) continue;
 
-        const relation = (relations as PlainObject | undefined)?.[key] as Relation | "ignore" | undefined;
+        const relation = (relations as PlainObject | undefined)?.[key] as Relation | undefined;
 
         if (!relation) {
             create[key] = field;
             if (!omitPkInUpdate || key !== pkName) update[key] = field;
             continue;
         }
-        if (relation === "ignore") continue;
 
         if (relation.mode === "oto" || relation.mode === "mto") {
             if (relation.fkHere !== undefined) {

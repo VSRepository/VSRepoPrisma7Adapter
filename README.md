@@ -32,7 +32,7 @@
         - [`pk`](#pk)
         - [`onUpdate`](#onupdate)
         - [`onDisconnect`](#ondisconnect)
-        - [Ignoring a relation (`"ignore"`)](#ignoring-a-relation-ignore)
+        - [Leaving a relation out of writes](#leaving-a-relation-out-of-writes)
         - [`fkHere` and `fkThere`](#fkhere-and-fkthere)
         - [`allowOmitPk`](#allowomitpk)
         - [How each write method resolves relations](#how-each-write-method-resolves-relations)
@@ -106,9 +106,10 @@ At construction, the adapter checks the Prisma Client and the model, and resolve
 
 - a `null`/`undefined` client throws a `VSRepoAdapterError` (code `MISSING_DB_CLIENT`);
 - a `modelName` with no matching delegate on the client (`prisma.<modelName>`) throws `MODEL_NOT_FOUND`;
+- a `pkName` that isn't a scalar field of the model (`prisma.<modelName>.fields`) throws `FIELD_NOT_FOUND`, and the message lists the fields it found. A delegate with no `fields` metadata at all (i.e. not a Prisma 7 generated client) throws `MODEL_NOT_FOUND`;
 - the provider comes from `provider` when set; otherwise it's detected from the generated client (`_engineConfig.activeProvider`, falling back to the driver adapter's `provider`). If it can't be detected, construction throws `NOT_SUPPORTED` — set `provider` explicitly in that case (one of `postgresql`, `cockroachdb`, `mysql`, `sqlite`, `sqlserver`).
 
-The other fields (`pkName`, `relations`, `logLevel`, `allowOmitPk`) are checked by TypeScript only, not at runtime.
+The other fields (`relations`, `logLevel`, `allowOmitPk`) are checked by TypeScript only, not at runtime.
 
 ## Global config
 
@@ -134,7 +135,7 @@ The name `relations` appears in **two different places** in the API, with **diff
 |                       | `relations` in the **constructor**                                                                                                                                                                                                  | `relations` in **method options**                                                                    |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Where you define it   | `new Prisma7Adapter(prisma, { relations: ... })`                                                                                                                                                                                    | `repository.get(where, { relations: ... })` — and other methods                                      |
-| Shape                 | One **config object** per field (`{ mode, pk, onUpdate?, onDisconnect?, fkHere?, fkThere? }`), or `"ignore"`                                                                                                                        | One **`true`/sub-object** per field: `{ posts: true }`                                               |
+| Shape                 | One **config object** per field (`{ mode, pk, onUpdate?, onDisconnect?, fkHere?, fkThere? }`)                                                                                                                                       | One **`true`/sub-object** per field: `{ posts: true }`                                               |
 | Purpose               | **Write** — when a `create`/`update`/`upsert`/`save` payload contains a relation field, tells the adapter how to turn it into a Prisma nested write (`create`/`connect`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) | **Read** — eager loading: which relations to fetch alongside the result (becomes a Prisma `include`) |
 | Consumed by           | `parsePrismaWriteData` (write resolver)                                                                                                                                                                                             | `parsePrismaInclude` (via `resolveReadArg`)                                                          |
 | Depends on the other? | No — it only affects writes                                                                                                                                                                                                         | No — it works even with no `relations` in the constructor                                            |
@@ -152,11 +153,10 @@ relations: {
     posts: { mode: "otm", pk: "id", onUpdate: "set" },
     address: { mode: "oto", pk: "id", onUpdate: "upsert", onDisconnect: "delete" },
     author: { mode: "mto", pk: "id" }, // every option has a default
-    audit: "ignore", // never written through this repository
 }
 ```
 
-Without `relations`, every field — including relation fields — is passed straight through to Prisma's `where`/`data`/`create`/`update`, as-is. That's fine for scalar fields, but Prisma expects a very specific nested-write shape (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) for relation fields, so if your entity has relations you'll usually want to configure them.
+Only the **scalar fields of the model** (read from `prisma.<modelName>.fields` when the adapter is created) and the relations configured here are written. Any other key in a `create`/`update`/`upsert`/`save` payload — typically a relation field you didn't configure — is left out of the write, instead of being sent to Prisma (which would reject it with `Unknown argument`). Prisma also expects a very specific nested-write shape (`create`/`connectOrCreate`/`upsert`/`disconnect`/`deleteMany`/`set`) for relation fields, so if you want a relation persisted, configure it. `where` filters are not affected.
 
 #### `mode`
 
@@ -179,8 +179,8 @@ How `save`/`update`/`upsert` write the relation on update. The values accepted d
 
 **To-one (`oto`/`mto`)**, when the related object has its `pk`:
 
-- **`"connect"`** never creates nor overwrites the related record: it only points the relation to it.
-- **`"connectOrCreate"`** creates the related record when it is missing.
+- **`"connect"`** (default) never creates nor overwrites the related record: it only points the relation to it.
+- **`"connectOrCreate"`** creates the related record when it is missing. It is the default when the relation has [`fkThere`](#fkhere-and-fkthere), since the related record is the one that holds the FK.
 - **`"upsert"`** is the one that **overwrites** the related record with the fields you sent.
 - When the owner record itself is being created (`create`, or the `create` branch of `save`), a related object with `pk` always becomes a `connectOrCreate`.
 
@@ -196,15 +196,13 @@ What sending `null` to a to-one relation does on update:
 - **`"disconnect"`** (default) — detaches the related record and keeps it. Prisma rejects it when the relation is required.
 - **`"delete"`** — deletes the related record. Available for `oto` and `mto`, and always opt-in. Be careful on an `mto`: the related record is shared with other rows, so deleting it affects all of them, and Prisma rejects the write while other rows still reference it (unless the FK has a referential action such as `onDelete: Cascade`).
 
-#### Ignoring a relation (`"ignore"`)
+#### Leaving a relation out of writes
 
-Setting a relation to `"ignore"` leaves that field out of every write (`create`, `update`, `save`...): the object (or array) is simply dropped. It is useful for a relation you **load** but don't want to **persist** through this entity.
+A relation that has **no entry** in `relations` is left out of every write (`create`, `update`, `save`...): the object (or array) is simply dropped. It is useful for a relation you **load** but don't want to **persist** through this entity — just don't configure it.
 
 ```typescript
-// AddressRepository
-relations: {
-    user: "ignore";
-}
+// AddressRepository: `user` is loaded but never written
+new Prisma7Adapter(prisma, { modelName: "address", pkName: "id" });
 ```
 
 Since the relation object is dropped, a scalar FK in the payload (`userId`) goes through as is, together with the primary key. That makes it the simplest way around the [`allowOmitPk` problem](#allowomitpk) when you only want to keep the FK: `address.save(addressLoadedWithItsUser)` updates the address and never touches the user.
@@ -246,7 +244,7 @@ relations: { user: { mode: "oto", pk: "id", fkHere: "userId" } }
 
 **Ways around it, without `allowOmitPk`:**
 
-1. **Ignore the relation** when you only want to keep the FK: `relations: { user: "ignore" }` (see [Ignoring a relation](#ignoring-a-relation-ignore)). The payload keeps `id` and `userId`, and the related entity is not written.
+1. **Leave the relation out of `relations`** when you only want to keep the FK (see [Leaving a relation out of writes](#leaving-a-relation-out-of-writes)). The payload keeps `id` and `userId`, and the related entity is not written.
 2. **Send the scalar FK instead of the relation object.** `address.save({ id, city, userId })` keeps both `id` and `userId`, since there's no relation object. Persist the related entity on its own (through its repository) when it also changed — ideally in one `transaction`.
 3. **Send only what changed.** `address.update({ id }, { city })` carries neither the primary key nor the relation.
 4. **Save from the other side.** `user.save({ ...user, address })` keeps the primary keys (configure `fkThere` there): the FK lives in `Address`, so `User` has no FK of its own to conflict with.
