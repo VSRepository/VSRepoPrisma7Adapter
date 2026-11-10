@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [2.0.0-dev.2] - 2026-11-09
 
 ### Added
 
@@ -25,7 +25,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased] (Português)
+## [2.0.0-dev.2] - 2026-11-09 (Português)
 
 ### Adicionado
 
