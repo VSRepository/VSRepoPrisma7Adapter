@@ -93,7 +93,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      * created **after** this call. It replaces the previous global config, and
      * the config passed to each adapter's constructor takes precedence.
      */
-    static setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
+    static override setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
         this.globalConfig = globalConfig;
     }
 
