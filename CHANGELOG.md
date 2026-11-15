@@ -6,6 +6,42 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev.3] - 2026-11-14
+
+### Added
+
+- **`VSRepoPrisma7Adapter.execInTransaction`** (static) — the optional `VSRepoAdapter.execInTransaction` hook, which opens a Prisma interactive transaction straight from a `dbClient` you pass in, instead of from an adapter instance
+- **`TxParam<DB>`** — the Prisma interactive transaction client type derived from a client type, used by `execInTransaction`, `runInTransaction`'s callback and `Prisma7OrmTypes`
+- **`Prisma7Config` alias for `Prisma7AdapterConfig`**, matching the `Prisma7Adapter`/`VSRepoPrisma7Adapter` pair. Both names export the same type
+
+### Changed
+
+- **`runInTransaction`'s callback `tx` is typed as `TxParam<K>`** — the transaction client now carries the generated model delegates of your Prisma client, instead of `any`. Runtime behavior is unchanged
+- **`getDbClient()` returns `K`** (the Prisma client type the adapter was created with) instead of `any`, so the delegates are typed on the returned client
+- **`Prisma7OrmTypes<DB, TX>` resolves `dbTransaction` to `TxParam<DB>`** when `TX` isn't provided (it stays overridable through `TX`)
+- **The adapter declares `configType?: Prisma7AdapterConfig<T, K>`**, the base contract's optional type-only property, so the constructor config type follows the adapter instead of `any`. `setGlobalConfig` is now marked `override`, since the base class declares it as an optional static hook
+- **`vsrepo` peer dependency bumped to `^3.0.0-dev.5`**
+
+---
+
+## [2.0.0-dev.3] - 2026-11-14 (Português)
+
+### Adicionado
+
+- **`VSRepoPrisma7Adapter.execInTransaction`** (estático) — o hook opcional `VSRepoAdapter.execInTransaction`, que abre uma transaction interativa do Prisma direto a partir de um `dbClient` que você passa, em vez de a partir de uma instância do adapter
+- **`TxParam<DB>`** — o tipo do transaction client interativo do Prisma derivado de um tipo de client, usado pelo `execInTransaction`, pelo callback do `runInTransaction` e pelo `Prisma7OrmTypes`
+- **Alias `Prisma7Config` pro `Prisma7AdapterConfig`**, seguindo o par `Prisma7Adapter`/`VSRepoPrisma7Adapter`. Os dois nomes exportam o mesmo tipo
+
+### Alterado
+
+- **O `tx` do callback do `runInTransaction` é tipado como `TxParam<K>`** — o transaction client agora carrega os delegates dos models gerados do seu client Prisma, em vez de `any`. O comportamento em runtime é o mesmo
+- **O `getDbClient()` retorna `K`** (o tipo do client Prisma com que o adapter foi criado) em vez de `any`, então os delegates vêm tipados no client retornado
+- **O `Prisma7OrmTypes<DB, TX>` resolve o `dbTransaction` pra `TxParam<DB>`** quando o `TX` não é informado (continua podendo ser sobrescrito pelo `TX`)
+- **O adapter declara `configType?: Prisma7AdapterConfig<T, K>`**, a propriedade type-only opcional do contrato base, então o tipo da config do construtor acompanha o adapter em vez de ser `any`. O `setGlobalConfig` agora é marcado como `override`, já que a classe base o declara como hook estático opcional
+- **Peer dependency `vsrepo` elevada pra `^3.0.0-dev.5`**
+
+---
+
 ## [2.0.0-dev.2] - 2026-11-09
 
 ### Added
