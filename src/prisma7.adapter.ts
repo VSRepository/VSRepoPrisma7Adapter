@@ -59,6 +59,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
     private static globalConfig: Prisma7GlobalConfig = {};
 
+    declare configType?: Prisma7AdapterConfig<T, K>;
+
     constructor(
         private readonly prisma: K,
         config: Prisma7AdapterConfig<T, K>,
@@ -96,6 +98,21 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     static override setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
         this.globalConfig = globalConfig;
+    }
+
+    static override async execInTransaction<R, P extends Prisma7ClientLike>(
+        dbClient: P,
+        fn: (tx: TxParam<P>) => Promise<R>,
+        options?: VSRepoTransactionOptions,
+    ): Promise<R> {
+        try {
+            return await (dbClient as any).$transaction(fn, {
+                isolationLevel: options?.isolationLevel,
+                timeout: options?.timeoutMs,
+            });
+        } catch (error) {
+            throw mapPrismaError(error, "execInTransaction");
+        }
     }
 
     private getPrismaRepository(db?: any): PrismaRepositoryLike {
