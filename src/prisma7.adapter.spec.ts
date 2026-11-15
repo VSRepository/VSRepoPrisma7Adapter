@@ -397,9 +397,20 @@ describe("VSRepoPrisma7Adapter", () => {
             });
         });
 
-        it("should wrap unknown errors in a VSRepoAdapterError", async () => {
+        it("should let application errors pass through unchanged", async () => {
             const { adapter, user } = setup();
             const original = new Error("boom");
+            user.findMany!.mockRejectedValue(original);
+
+            const error = await adapter.findMany().catch(e => e);
+
+            expect(error).not.toBeInstanceOf(VSRepoAdapterError);
+            expect(error).toBe(original);
+        });
+
+        it("should map an unrecognized Prisma error name to UNKNOWN", async () => {
+            const { adapter, user } = setup();
+            const original = prismaError("PrismaClientUnknownRequestError");
             user.findMany!.mockRejectedValue(original);
 
             const error = await adapter.findMany().catch(e => e);
@@ -1409,6 +1420,53 @@ describe("VSRepoPrisma7Adapter", () => {
                     throw prismaError("PrismaClientKnownRequestError", { code: "P2002" });
                 }),
             ).rejects.toMatchObject({ code: AdapterErrorCode.UNIQUE_CONSTRAINT_VIOLATION });
+        });
+
+        it("should preserve application errors thrown by fn", async () => {
+            const { adapter } = setup();
+            const original = new Error("not allowed");
+
+            await expect(
+                adapter.runInTransaction(async () => {
+                    throw original;
+                }),
+            ).rejects.toBe(original);
+        });
+    });
+
+    describe("execInTransaction", () => {
+        it("should run fn inside prisma.$transaction and return its result", async () => {
+            const { prisma, tx } = setup();
+            const fn = vi.fn().mockResolvedValue("done");
+
+            const result = await VSRepoPrisma7Adapter.execInTransaction(prisma, fn);
+
+            expect(result).toBe("done");
+            expect(fn).toHaveBeenCalledWith(tx);
+            expect(prisma.$transaction).toHaveBeenCalledWith(fn, { isolationLevel: undefined, timeout: undefined });
+        });
+
+        it("should map Prisma errors raised by the transaction", async () => {
+            const { prisma } = setup();
+            prisma.$transaction.mockRejectedValue(prismaError("PrismaClientKnownRequestError", { code: "P2034" }));
+
+            const error = await VSRepoPrisma7Adapter.execInTransaction(prisma, async () => 1).catch(e => e);
+
+            expect(error).toBeInstanceOf(VSRepoAdapterError);
+            expect(error.code).toBe(AdapterErrorCode.TRANSACTION_CONFLICT);
+            expect(error.message).toContain("execInTransaction");
+        });
+
+        it("should preserve application errors thrown by fn", async () => {
+            const { prisma } = setup();
+            const original = new Error("not allowed");
+
+            const error = await VSRepoPrisma7Adapter.execInTransaction(prisma, async () => {
+                throw original;
+            }).catch(e => e);
+
+            expect(error).not.toBeInstanceOf(VSRepoAdapterError);
+            expect(error).toBe(original);
         });
     });
 

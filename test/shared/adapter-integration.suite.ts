@@ -1343,13 +1343,26 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             });
 
             it("should roll back when the callback throws", async () => {
+                const boom = new Error("boom");
                 const failing = users.runInTransaction(async tx => {
                     await users.create({ email: "a@mail.com" }, { db: tx });
-                    throw new Error("boom");
+                    throw boom;
                 });
 
-                await expect(failing).rejects.toBeInstanceOf(VSRepoAdapterError);
+                await expect(failing).rejects.toBe(boom);
                 await expect(prisma.user.count()).resolves.toBe(0);
+            });
+
+            it("should preserve application errors thrown by the callback", async () => {
+                const unauthorized = Object.assign(new Error("not allowed"), { name: "UnauthorizedException" });
+                const failing = users.runInTransaction(async () => {
+                    throw unauthorized;
+                });
+
+                const error = await failing.catch(e => e);
+
+                expect(error).toBe(unauthorized);
+                expect(error).not.toBeInstanceOf(VSRepoAdapterError);
             });
 
             it("should see its own uncommitted writes inside the transaction", async () => {
@@ -1373,39 +1386,42 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             }
 
             it("should make saveMany participate in an outer transaction", async () => {
+                const rollback = new Error("rollback everything");
                 const failing = users.runInTransaction(async tx => {
                     await users.saveMany([{ email: "a@mail.com" }, { email: "b@mail.com" }], { db: tx });
-                    throw new Error("rollback everything");
+                    throw rollback;
                 });
 
-                await expect(failing).rejects.toBeInstanceOf(VSRepoAdapterError);
+                await expect(failing).rejects.toBe(rollback);
                 await expect(prisma.user.count()).resolves.toBe(0);
             });
 
             it("should make deleteManyReturning participate in an outer transaction", async () => {
                 await seedDirectory();
 
+                const rollback = new Error("rollback everything");
                 const failing = users.runInTransaction(async tx => {
                     await users.deleteManyReturning({ balance: { lte: 20 } }, { db: tx });
-                    throw new Error("rollback everything");
+                    throw rollback;
                 });
 
-                await expect(failing).rejects.toBeInstanceOf(VSRepoAdapterError);
+                await expect(failing).rejects.toBe(rollback);
                 await expect(prisma.user.count()).resolves.toBe(5);
             });
 
             it("should make a raw query participate in the transaction", async () => {
                 await seedUser({ balance: 1 });
 
+                const rollback = new Error("rollback");
                 const failing = users.runInTransaction(async tx => {
                     await users.query(`UPDATE ${quote("User")} SET ${quote("balance")} = 99`, {
                         modifying: true,
                         db: tx,
                     });
-                    throw new Error("rollback");
+                    throw rollback;
                 });
 
-                await expect(failing).rejects.toBeInstanceOf(VSRepoAdapterError);
+                await expect(failing).rejects.toBe(rollback);
                 expect((await prisma.user.findFirst()).balance).toBe(1);
             });
         });
