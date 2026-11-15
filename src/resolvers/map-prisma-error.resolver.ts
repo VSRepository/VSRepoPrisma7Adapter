@@ -62,10 +62,26 @@ function prismaErrorName(error: unknown): string | undefined {
     return error.name || error.constructor?.name;
 }
 
-export function mapPrismaError(error: unknown, operation: string): VSRepoAdapterError {
+const prismaErrorNamesSet = new Set([
+    "PrismaClientKnownRequestError",
+    "PrismaClientInitializationError",
+    "PrismaClientRustPanicError",
+    "PrismaClientValidationError",
+    "PrismaClientUnknownRequestError",
+]);
+
+function isPrismaError(errorName: string) {
+    return prismaErrorNamesSet.has(errorName);
+}
+
+export function mapPrismaError(error: unknown, operation: string): unknown {
     if (error instanceof VSRepoAdapterError) return error;
 
     const name = prismaErrorName(error);
+
+    // * Só trata o erro se for do Prisma, permitindo que erros lançados pelo próprio usuário sigam intactos (ex: UnauthorizedException em uma transaction)
+    if (name === undefined || !isPrismaError(name)) return error;
+
     const prismaError = error as PrismaLikeError;
 
     switch (name) {
