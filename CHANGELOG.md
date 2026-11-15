@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev.4] - 2026-11-15
+
+### Fixed
+
+- **Application errors are preserved.** `mapPrismaError` now maps only recognized Prisma errors, allowing errors thrown by application code (such as `UnauthorizedException` inside a transaction) to pass through unchanged
+
+---
+
+## [2.0.0-dev.4] - 2026-11-15 (Português)
+
+### Corrigido
+
+- **Erros da aplicação são preservados.** O `mapPrismaError` agora mapeia apenas erros reconhecidos do Prisma, permitindo que erros lançados pelo código da aplicação (como `UnauthorizedException` dentro de uma transaction) sigam intactos
+
+---
+
 ## [2.0.0-dev.3] - 2026-11-14
 
 ### Added
