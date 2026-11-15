@@ -37,6 +37,7 @@ import { PlainObject } from "./types/plain-object.type.js";
 import { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 import { isDecimal } from "./validators/is-decimal.validator.js";
 import { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";
+import { TxParam } from "./types/tx-param.type.js";
 
 /**
  * `VSRepoAdapter` implementation for Prisma 7.
@@ -330,12 +331,12 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /** Returns the underlying ORM client instance used outside of transactions. */
-    getDbClient(): any {
+    getDbClient(): K {
         return this.prisma;
     }
 
     /** Runs `fn` inside a native transaction of the underlying ORM/database. */
-    async runInTransaction<R>(fn: (tx: any) => Promise<R>, options?: VSRepoTransactionOptions): Promise<R> {
+    async runInTransaction<R>(fn: (tx: TxParam<K>) => Promise<R>, options?: VSRepoTransactionOptions): Promise<R> {
         try {
             return await (this.prisma as any).$transaction(fn, {
                 isolationLevel: options?.isolationLevel,

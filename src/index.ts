@@ -14,3 +14,4 @@ export type { Prisma7AdapterConfig, Prisma7AdapterConfig as Prisma7Config } from
 export type { PrismaClientModels } from "./types/prisma-client-models.type.js";
 export type { PrismaProvider } from "./types/prisma-provider.type.js";
 export type { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";
+export type { TxParam } from "./types/tx-param.type.js";
