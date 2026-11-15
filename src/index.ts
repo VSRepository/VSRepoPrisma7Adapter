@@ -10,7 +10,8 @@ export type {
 export type { Prisma7OrmTypes } from "./types/prisma7-orm-types.type.js";
 export type { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 export type { AdapterRelations } from "./types/adapter-relations.type.js";
-export type { Prisma7AdapterConfig } from "./types/adapter-config.type.js";
+export type { Prisma7AdapterConfig, Prisma7AdapterConfig as Prisma7Config } from "./types/adapter-config.type.js";
 export type { PrismaClientModels } from "./types/prisma-client-models.type.js";
 export type { PrismaProvider } from "./types/prisma-provider.type.js";
 export type { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";
+export type { TxParam } from "./types/tx-param.type.js";

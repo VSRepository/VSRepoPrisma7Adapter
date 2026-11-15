@@ -37,6 +37,7 @@ import { PlainObject } from "./types/plain-object.type.js";
 import { Prisma7ClientLike } from "./types/prisma7-client-like.type.js";
 import { isDecimal } from "./validators/is-decimal.validator.js";
 import { Prisma7GlobalConfig } from "./types/prisma7-global-config.type.js";
+import { TxParam } from "./types/tx-param.type.js";
 
 /**
  * `VSRepoAdapter` implementation for Prisma 7.
@@ -57,6 +58,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private readonly knownKeys: ReadonlySet<string>;
 
     private static globalConfig: Prisma7GlobalConfig = {};
+
+    declare configType?: Prisma7AdapterConfig<T, K>;
 
     constructor(
         private readonly prisma: K,
@@ -93,8 +96,23 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      * created **after** this call. It replaces the previous global config, and
      * the config passed to each adapter's constructor takes precedence.
      */
-    static setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
+    static override setGlobalConfig(globalConfig: Prisma7GlobalConfig): void {
         this.globalConfig = globalConfig;
+    }
+
+    static override async execInTransaction<R, P extends Prisma7ClientLike>(
+        dbClient: P,
+        fn: (tx: TxParam<P>) => Promise<R>,
+        options?: VSRepoTransactionOptions,
+    ): Promise<R> {
+        try {
+            return await (dbClient as any).$transaction(fn, {
+                isolationLevel: options?.isolationLevel,
+                timeout: options?.timeoutMs,
+            });
+        } catch (error) {
+            throw mapPrismaError(error, "execInTransaction");
+        }
     }
 
     private getPrismaRepository(db?: any): PrismaRepositoryLike {
@@ -330,12 +348,12 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     /** Returns the underlying ORM client instance used outside of transactions. */
-    getDbClient(): any {
+    getDbClient(): K {
         return this.prisma;
     }
 
     /** Runs `fn` inside a native transaction of the underlying ORM/database. */
-    async runInTransaction<R>(fn: (tx: any) => Promise<R>, options?: VSRepoTransactionOptions): Promise<R> {
+    async runInTransaction<R>(fn: (tx: TxParam<K>) => Promise<R>, options?: VSRepoTransactionOptions): Promise<R> {
         try {
             return await (this.prisma as any).$transaction(fn, {
                 isolationLevel: options?.isolationLevel,

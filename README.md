@@ -5,7 +5,7 @@
     <img src="https://img.shields.io/npm/v/@vsrepo/prisma7-adapter?style=flat-square" alt="npm version"/>
     <img src="https://img.shields.io/npm/l/@vsrepo/prisma7-adapter?style=flat-square" alt="npm license"/>
     <img src="https://img.shields.io/npm/dt/@vsrepo/prisma7-adapter?style=flat-square" alt="npm downloads"/>
-    <img src="https://img.shields.io/badge/inspired%20by-JpaRepository-E73121?style=flat-square" alt="inspired by JpaRepository"/>
+    <img src="https://img.shields.io/badge/inspired%20by-Spring%20Data%20JPA-E6DB33F?style=flat-square" alt="inspired by Spring Data JPA"/>
   </p>
 </div>
 
@@ -335,7 +335,7 @@ The `like` operator isn't supported on any provider — Prisma has no equivalent
 
 ## Transactions
 
-**Every** method accepts `options.db` and runs its operation on the client/transaction you pass — the difference is in **how** each one treats it:
+**Every** method accepts `options.db` and runs its operation on the client/transaction you pass — the difference is in **how** each one treats it (to open a transaction with no adapter/repository instance at hand, use the static [`execInTransaction`](#starting-a-transaction-without-an-adapter-instance-execintransaction)):
 
 - Most methods (single, one-call Prisma operations) simply run directly on `options?.db`: hand them a transaction client and the call participates in that transaction, starting nothing new.
 - `saveMany` and `deleteManyReturning` — and `updateManyReturning`/`createManyReturning` when you pass `select` or `relations` — need to run **more than one** Prisma operation atomically (`saveMany` saves each record individually; `updateManyReturning`/`createManyReturning` do an `updateManyAndReturn`/`createManyAndReturn` + `findMany`; `deleteManyReturning` does a `findMany` + `deleteMany`), so they go through `runTransactional`. Without `select`/`relations`, `updateManyReturning`/`createManyReturning` are a single Prisma call. If `options.db` is already an active transaction client, it's reused — no nested transaction is started; otherwise, a new transaction is created (on `options.db` if provided, or on the root client otherwise).
@@ -352,6 +352,29 @@ await userRepository.transaction(async tx => {
     await userRepository.save(user, { db: tx });
     await userRepository.save(otherUsers, { db: tx }); // an array saves several records
 });
+```
+
+### Starting a transaction without an adapter instance (`execInTransaction`)
+
+`runInTransaction` is an instance method — it always opens the transaction on the client the adapter was built with. When you don't have an adapter/repository instance at hand, use the **static** `execInTransaction` instead: it takes the database client explicitly, so you can open a single transaction at bootstrap, inside a service that only receives the `PrismaClient`, or to group writes from several repositories that haven't been instantiated yet.
+
+```typescript
+import { Prisma7Adapter } from "@vsrepo/prisma7-adapter";
+import { VSRepoIsolationLevel } from "vsrepo";
+import { prisma } from "./prisma";
+
+// `userRepository`/`auditLogRepository` are repositories you already built
+// (or plain adapters) — the static method doesn't need an instance of them.
+await Prisma7Adapter.execInTransaction(
+    prisma, // the client the transaction is opened on
+    async tx => {
+        // `tx` is Prisma's interactive transaction client. Pass it as `{ db: tx }`
+        // to any repository call so the call joins this transaction.
+        const user = await userRepository.create({ name: "Maria" }, { db: tx });
+        await auditLogRepository.create({ action: "user.create", userId: user.id }, { db: tx });
+    },
+    { isolationLevel: VSRepoIsolationLevel.SERIALIZABLE, timeoutMs: 5000 },
+);
 ```
 
 ### Concurrency in `deleteManyReturning`
@@ -386,7 +409,7 @@ The adapter uses `VSLogger` (from `vsrepo`) internally: every method logs a `DEB
 
 ## Requirements
 
-- `vsrepo` ^3.0.0-dev.3
+- `vsrepo` ^3.0.0-dev.5
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - A PostgreSQL, CockroachDB, MySQL, SQLite or SQL Server database (all covered by the integration tests)

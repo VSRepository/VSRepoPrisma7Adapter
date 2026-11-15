@@ -5,7 +5,7 @@
     <img src="https://img.shields.io/npm/v/@vsrepo/prisma7-adapter?style=flat-square" alt="npm version"/>
     <img src="https://img.shields.io/npm/l/@vsrepo/prisma7-adapter?style=flat-square" alt="npm license"/>
     <img src="https://img.shields.io/npm/dt/@vsrepo/prisma7-adapter?style=flat-square" alt="npm downloads"/>
-    <img src="https://img.shields.io/badge/inspired%20by-JpaRepository-E73121?style=flat-square" alt="inspired by JpaRepository"/>
+    <img src="https://img.shields.io/badge/inspired%20by-Spring%20Data%20JPA-E6DB33F?style=flat-square" alt="inspired by Spring Data JPA"/>
   </p>
 </div>
 
@@ -335,7 +335,7 @@ O operador `like` não é suportado em nenhum provider — o Prisma não tem equ
 
 ## Transactions
 
-**Todos** os métodos aceitam `options.db` e executam a operação no client/transaction passado — a diferença está em **como** cada um o trata:
+**Todos** os métodos aceitam `options.db` e executam a operação no client/transaction passado — a diferença está em **como** cada um o trata (pra abrir uma transaction sem nenhuma instância de adapter/repository em mãos, use o estático [`execInTransaction`](#iniciar-uma-transaction-sem-uma-instância-do-adapter-execintransaction)):
 
 - A maioria (operações de uma única chamada Prisma) roda direto em `options?.db`: você passa um transaction client e a chamada participa da transaction, sem iniciar nada novo.
 - `saveMany` e `deleteManyReturning` — e `updateManyReturning`/`createManyReturning` quando você passa `select` ou `relations` — precisam rodar **mais de uma operação** do Prisma atomicamente (`saveMany` salva cada registro individualmente; `updateManyReturning`/`createManyReturning` fazem um `updateManyAndReturn`/`createManyAndReturn` + `findMany`; `deleteManyReturning` faz um `findMany` + `deleteMany`), então passam por `runTransactional`. Sem `select`/`relations`, `updateManyReturning`/`createManyReturning` são uma única chamada do Prisma. Se `options.db` já for um transaction client ativo, ele é reaproveitado — nenhuma transaction aninhada é criada; caso contrário, uma nova transaction é criada (em `options.db`, se fornecido, ou no client raiz caso contrário).
@@ -352,6 +352,29 @@ await userRepository.transaction(async tx => {
     await userRepository.save(user, { db: tx });
     await userRepository.save(outrosUsuarios, { db: tx }); // um array salva vários registros
 });
+```
+
+### Iniciar uma transaction sem uma instância do adapter (`execInTransaction`)
+
+O `runInTransaction` é um método de instância — ele sempre abre a transaction no client com que o adapter foi criado. Quando você não tem uma instância de adapter/repository em mãos, use o **estático** `execInTransaction`: ele recebe o client do banco explicitamente, então você pode abrir uma transaction única no bootstrap, dentro de um service que só recebe o `PrismaClient`, ou pra agrupar escritas de vários repositories que ainda não foram instanciados.
+
+```typescript
+import { Prisma7Adapter } from "@vsrepo/prisma7-adapter";
+import { VSRepoIsolationLevel } from "vsrepo";
+import { prisma } from "./prisma";
+
+// `userRepository`/`auditLogRepository` são repositories que você já construiu
+// (ou adapters puros) — o método estático não precisa de uma instância deles.
+await Prisma7Adapter.execInTransaction(
+    prisma, // o client em que a transaction é aberta
+    async tx => {
+        // `tx` é o transaction client interativo do Prisma. Passe-o como `{ db: tx }`
+        // pra qualquer chamada de repository entrar nessa transaction.
+        const user = await userRepository.create({ name: "Maria" }, { db: tx });
+        await auditLogRepository.create({ action: "user.create", userId: user.id }, { db: tx });
+    },
+    { isolationLevel: VSRepoIsolationLevel.SERIALIZABLE, timeoutMs: 5000 },
+);
 ```
 
 ### Concorrência em `deleteManyReturning`
@@ -386,7 +409,7 @@ O adapter usa o `VSLogger` (de `vsrepo`) internamente: todo método loga uma lin
 
 ## Requisitos
 
-- `vsrepo` ^3.0.0-dev.3
+- `vsrepo` ^3.0.0-dev.5
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - Um banco PostgreSQL, CockroachDB, MySQL, SQLite ou SQL Server (todos cobertos pelos testes de integração)
