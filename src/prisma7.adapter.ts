@@ -253,7 +253,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await this.getPrismaRepository(options?.db).update(arg);
 
@@ -282,7 +282,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await this.getPrismaRepository(options?.db).updateMany(arg);
 
@@ -333,7 +333,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 where: this.parseWhere(where) as any,
                 [aggKey]: { [field]: true },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${operation}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${operation}:`, arg);
 
             const aggResult = await this.getPrismaRepository(options?.db).aggregate(arg);
 
@@ -368,7 +368,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await fn();
 
@@ -512,7 +512,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 (findArg.select as any)[this.pkName] = true;
             }
 
-            this.logger.logDebug("Resolved Prisma args for deleteManyReturning", findArg);
+            this.logger.logDebug("Resolved Prisma args for deleteManyReturning:", findArg);
 
             const result = await this.runTransactional(options?.db, async tx => {
                 const repo = this.getPrismaRepository(tx);
@@ -585,7 +585,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
             const arg = { where: this.parseWhere(where), data: this.stripRelationFields(obj as PlainObject) };
 
-            this.logger.logDebug("Resolved Prisma args for updateManyReturning", { ...readArg, ...arg });
+            this.logger.logDebug("Resolved Prisma args for updateManyReturning:", { ...readArg, ...arg });
 
             let result: any;
 
@@ -595,6 +595,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 result = await this.runTransactional(options?.db, async tx => {
                     const repo = this.getPrismaRepository(tx);
                     const updated = await repo.updateManyAndReturn({ ...arg, select: { [this.pkName]: true } });
+
+                    if (updated.length === 0) return [];
 
                     const idsUpdated = updated.map((_: any) => _[this.pkName]);
 
@@ -645,7 +647,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const start = this.logger.startPerformLog(`run raw query (modifying: ${modifying})`);
 
         try {
-            this.logger.logDebug("Running raw query", { query, args, modifying });
+            this.logger.logDebug("Running raw query:", { query, args, modifying });
 
             const result = modifying
                 ? await db.$executeRawUnsafe(query, ...args)
@@ -712,7 +714,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 skipDuplicates: options?.ignoreConflicts,
             };
 
-            this.logger.logDebug("Resolved Prisma args for createManyReturning", { ...readArg, ...arg });
+            this.logger.logDebug("Resolved Prisma args for createManyReturning:", { ...readArg, ...arg });
 
             let result: any;
 
@@ -722,6 +724,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 result = await this.runTransactional(options?.db, async tx => {
                     const repo = this.getPrismaRepository(tx);
                     const created = await repo.createManyAndReturn({ ...arg, select: { [this.pkName]: true } });
+
+                    if (created.length === 0) return [];
 
                     const idsCreated = created.map((_: any) => _[this.pkName]);
 
