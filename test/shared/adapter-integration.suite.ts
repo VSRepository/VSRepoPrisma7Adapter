@@ -303,6 +303,277 @@ export function defineAdapterIntegrationSuite(config: AdapterIntegrationConfig):
             });
         });
 
+        describe("relationsOptions", () => {
+            const titles = (rows: Array<{ title: string }> | undefined) => (rows ?? []).map(r => r.title);
+
+            /** John with posts a..e (b is the only unpublished one), created in this order. */
+            async function seedJohnWithPosts(): Promise<UserRow> {
+                const john = await seedUser({ name: "John" });
+
+                for (const [title, published] of [
+                    ["a", true],
+                    ["b", false],
+                    ["c", true],
+                    ["d", true],
+                    ["e", true],
+                ] as const) {
+                    await seedPost(john.id, { title, published });
+                }
+
+                return john;
+            }
+
+            it("should filter the loaded to-many relation with where", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    { relations: { posts: true }, relationsOptions: { posts: { where: { published: true } } } },
+                );
+
+                expect(titles(found!.posts).sort()).toEqual(["a", "c", "d", "e"]);
+            });
+
+            it("should order the loaded to-many relation", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    { relations: { posts: true }, relationsOptions: { posts: { order: { title: "desc" } } } },
+                );
+
+                expect(titles(found!.posts)).toEqual(["e", "d", "c", "b", "a"]);
+            });
+
+            it("should paginate the loaded to-many relation", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        relations: { posts: true },
+                        relationsOptions: { posts: { order: { title: "asc" }, pagination: { offset: 1, limit: 2 } } },
+                    },
+                );
+
+                expect(titles(found!.posts)).toEqual(["b", "c"]);
+            });
+
+            it("should combine where, order and pagination", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        relations: { posts: true },
+                        relationsOptions: {
+                            posts: {
+                                where: { published: true },
+                                order: { title: "desc" },
+                                pagination: { offset: 1, limit: 2 },
+                            },
+                        },
+                    },
+                );
+
+                expect(titles(found!.posts)).toEqual(["d", "c"]);
+            });
+
+            it("should paginate per parent record", async () => {
+                const alice = await seedUser({ name: "Alice" });
+                const bob = await seedUser({ name: "Bob" });
+                await seedPost(alice.id, { title: "a1" });
+                await seedPost(alice.id, { title: "a2" });
+                await seedPost(bob.id, { title: "b1" });
+                await seedPost(bob.id, { title: "b2" });
+
+                const found = await users.findMany(
+                    {},
+                    {
+                        relations: { posts: true },
+                        relationsOptions: { posts: { order: { title: "asc" }, pagination: { limit: 1 } } },
+                    },
+                );
+
+                const byName = Object.fromEntries(found.map(u => [u.name, titles(u.posts)]));
+                expect(byName).toEqual({ Alice: ["a1"], Bob: ["b1"] });
+            });
+
+            it("should keep the parent records whose related records don't match the where", async () => {
+                const john = await seedUser({ name: "John" });
+                const mary = await seedUser({ name: "Mary" });
+                await seedPost(john.id, { title: "a", published: true });
+                await seedPost(mary.id, { title: "b", published: false });
+
+                const found = await users.findMany(
+                    {},
+                    { relations: { posts: true }, relationsOptions: { posts: { where: { published: true } } } },
+                );
+
+                const byName = Object.fromEntries(found.map(u => [u.name, titles(u.posts)]));
+                expect(byName).toEqual({ John: ["a"], Mary: [] });
+            });
+
+            it("should apply the options of nested relations", async () => {
+                const john = await seedUser({ name: "John" });
+                const a = await seedPost(john.id, { title: "a", published: true });
+                const b = await seedPost(john.id, { title: "b", published: false });
+                const c = await seedPost(john.id, { title: "c", published: true });
+                await prisma.tag.create({
+                    data: { name: "ts", posts: { connect: [{ id: a.id }, { id: b.id }, { id: c.id }] } },
+                });
+                await prisma.tag.create({ data: { name: "js", posts: { connect: [{ id: a.id }] } } });
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        relations: { posts: { tags: true } },
+                        relationsOptions: {
+                            posts: {
+                                where: { published: true },
+                                order: { title: "asc" },
+                                relationsOptions: { tags: { where: { name: "ts" } } },
+                            },
+                        },
+                    },
+                );
+
+                expect(found!.posts!.map(p => [p.title, p.tags!.map(t => t.name)])).toEqual([
+                    ["a", ["ts"]],
+                    ["c", ["ts"]],
+                ]);
+            });
+
+            it("should apply the options to relations selected with select", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        select: { id: true, posts: { title: true } },
+                        relationsOptions: {
+                            posts: { where: { published: true }, order: { title: "desc" }, pagination: { limit: 2 } },
+                        },
+                    },
+                );
+
+                expect(found!.posts).toEqual([{ title: "e" }, { title: "d" }]);
+            });
+
+            it("should apply the options to a relation selected with `true`", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    {
+                        select: { id: true, posts: true },
+                        relationsOptions: { posts: { order: { title: "asc" }, pagination: { limit: 2 } } },
+                    },
+                );
+
+                expect(titles(found!.posts)).toEqual(["a", "b"]);
+            });
+
+            it("should ignore the options of relations that are not being loaded", async () => {
+                const john = await seedJohnWithPosts();
+
+                const found = await users.findOne(
+                    { id: john.id },
+                    { relations: { address: true }, relationsOptions: { posts: { pagination: { limit: 1 } } } },
+                );
+
+                expect(found).toMatchObject({ id: john.id, address: null });
+                expect(found!.posts).toBeUndefined();
+            });
+
+            it("should not change the parent records returned by the top-level where, order and pagination", async () => {
+                const alice = await seedUser({ name: "Alice" });
+                const bob = await seedUser({ name: "Bob" });
+                const carol = await seedUser({ name: "Carol" });
+                for (const user of [alice, bob, carol]) await seedPost(user.id, { title: `${user.name}-1` });
+
+                const found = await users.findMany(
+                    {},
+                    {
+                        relations: { posts: true },
+                        relationsOptions: { posts: { where: { title: { endsWith: "-1" } } } },
+                        order: { name: "desc" },
+                        pagination: { offset: 1, limit: 1 },
+                    },
+                );
+
+                expect(found.map(u => u.name)).toEqual(["Bob"]);
+                expect(titles(found[0]!.posts)).toEqual(["Bob-1"]);
+            });
+
+            it("should filter an optional to-one relation with where, leaving it null when it doesn't match", async () => {
+                await seedUser({
+                    name: "John",
+                    address: { create: { street: "Rua A", city: "Aracaju", country: "BR" } },
+                });
+                await seedUser({
+                    name: "Mary",
+                    address: { create: { street: "Rua B", city: "Recife", country: "BR" } },
+                });
+
+                const found = await users.findMany(
+                    {},
+                    {
+                        relations: { address: true },
+                        relationsOptions: { address: { where: { city: "Aracaju" } } },
+                    },
+                );
+
+                const byName = Object.fromEntries(found.map(u => [u.name, u.address?.city ?? null]));
+                expect(byName).toEqual({ John: "Aracaju", Mary: null });
+            });
+
+            it("should apply the options when the read options come from a write", async () => {
+                const john = await seedUser({ name: "John" });
+                await seedPost(john.id, { title: "a", published: true });
+                await seedPost(john.id, { title: "b", published: false });
+
+                const updated = await users.update(
+                    { id: john.id },
+                    { name: "Johnny" },
+                    { relations: { posts: true }, relationsOptions: { posts: { where: { published: false } } } },
+                );
+
+                expect(updated.name).toBe("Johnny");
+                expect(titles(updated.posts)).toEqual(["b"]);
+            });
+
+            if (capabilities.insensitiveMode) {
+                it("should translate ignoreCase in the where of a relation", async () => {
+                    const john = await seedJohnWithPosts();
+
+                    const found = await users.findOne(
+                        { id: john.id },
+                        {
+                            relations: { posts: true },
+                            relationsOptions: { posts: { where: { title: { equals: "A", ignoreCase: true } } } },
+                        },
+                    );
+
+                    expect(titles(found!.posts)).toEqual(["a"]);
+                });
+            } else {
+                it("should reject ignoreCase in the where of a relation with NOT_SUPPORTED", async () => {
+                    const john = await seedJohnWithPosts();
+
+                    await expect(
+                        users.findOne(
+                            { id: john.id },
+                            {
+                                relations: { posts: true },
+                                relationsOptions: { posts: { where: { title: { equals: "A", ignoreCase: true } } } },
+                            },
+                        ),
+                    ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+                });
+            }
+        });
+
         describe("where operators", () => {
             beforeEach(async () => {
                 await seedDirectory();

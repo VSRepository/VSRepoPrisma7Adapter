@@ -119,12 +119,19 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return db ? db[this.modelName] : (this.prisma as any)[this.modelName];
     }
 
-    /** Resolves the "read" part of a Prisma arg: select/include/orderBy/pagination. */
+    /**
+     * Resolves the "read" part of a Prisma arg: select/include/orderBy/pagination. The
+     * `relationsOptions` (where/order/pagination of the loaded relations) are applied inside
+     * the `select` or `include`, whichever is used (`select` wins over `relations`).
+     */
     private resolveReadArg(options: AdapterMethodOptions<T> | undefined): PrismaArgLike {
         if (!options) return {};
 
-        const prismaSelect = options.select && parsePrismaSelect(options.select);
-        const prismaInclude = prismaSelect ? undefined : options.relations && parsePrismaInclude(options.relations);
+        const prismaSelect =
+            options.select && parsePrismaSelect(options.select, options.relationsOptions, this.provider);
+        const prismaInclude = prismaSelect
+            ? undefined
+            : options.relations && parsePrismaInclude(options.relations, options.relationsOptions, this.provider);
 
         return {
             select: prismaSelect,
@@ -133,6 +140,18 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             skip: options.pagination?.offset,
             take: options.pagination?.limit,
         };
+    }
+
+    /**
+     * `resolveReadArg` for the methods that take `SimpleAdapterMethodOptions`: only `select`, `relations`
+     * and `relationsOptions` are read, never `order`/`pagination`.
+     */
+    private resolveSimpleReadArg(options: SimpleAdapterMethodOptions<T> | undefined): PrismaArgLike {
+        return this.resolveReadArg({
+            select: options?.select,
+            relations: options?.relations,
+            relationsOptions: options?.relationsOptions,
+        });
     }
 
     /** Parses a `where` for this adapter's provider (rejecting what the provider cannot run). */
@@ -248,7 +267,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
         try {
             const arg = {
-                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                ...this.resolveSimpleReadArg(options),
                 where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
@@ -395,7 +414,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async save(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const objAny = obj as PlainObject;
         const pkValue = objAny[this.pkName];
-        const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+        const readArg = this.resolveSimpleReadArg(options);
         const repo = this.getPrismaRepository(options?.db);
         const { create, update } = this.parseData(objAny, true);
 
@@ -438,7 +457,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /** Deletes a single record matching `where`. */
     async delete(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
         };
 
@@ -473,7 +492,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         try {
             const prismaWhere = this.parseWhere(where);
             const findArg = {
-                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                ...this.resolveSimpleReadArg(options),
                 where: prismaWhere,
             };
 
@@ -514,7 +533,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async update(where: VSRepoWhere<T>, obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { update } = this.parseData(obj);
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
             data: update,
         };
@@ -547,7 +566,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         try {
             this.assertReturningManySupported("updateManyReturning");
 
-            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const readArg = this.resolveSimpleReadArg(options);
             const arg = { where: this.parseWhere(where), data: this.stripRelationFields(obj as PlainObject) };
 
             this.logger.logDebug("Resolved Prisma args for updateManyReturning:", { ...readArg, ...arg });
@@ -622,7 +641,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async create(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { create } = this.parseData(obj);
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             data: create,
         };
 
@@ -661,7 +680,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             this.assertReturningManySupported("createManyReturning");
             this.assertIgnoreConflictsSupported("createManyReturning", options?.ignoreConflicts);
 
-            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const readArg = this.resolveSimpleReadArg(options);
             const arg = {
                 data: objs.map(obj => this.stripRelationFields(obj as PlainObject)),
                 skipDuplicates: options?.ignoreConflicts,
@@ -734,7 +753,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const parsedUpdate = this.parseData(update).update;
 
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
             create: parsedCreate,
             update: parsedUpdate,
