@@ -245,7 +245,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         const methodName = `${operation}One`;
-        const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
             const arg = {
@@ -257,12 +256,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
             const result = await this.getPrismaRepository(options?.db).update(arg);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -275,7 +270,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
         const methodName = `${operation}Many`;
-        const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
             const arg = {
@@ -286,12 +280,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
             const result = await this.getPrismaRepository(options?.db).updateMany(arg);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -325,7 +315,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         where?: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        const start = this.logger.startPerformLog(`run ${operation}`);
         const aggKey = `_${operation}`;
 
         try {
@@ -337,12 +326,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
 
             const aggResult = await this.getPrismaRepository(options?.db).aggregate(arg);
 
-            this.logger.endPerformLog(start);
-
             return this.toNullableNumber(aggResult?.[aggKey]?.[field as string]);
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, operation);
         }
     }
@@ -365,19 +350,13 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     private async execMethod<R>(fn: () => Promise<R>, methodName: string, arg: object): Promise<R> {
-        const start = this.logger.startPerformLog(`run ${methodName}`);
-
         try {
             this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await fn();
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -437,8 +416,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      * reusing `options.db` when it's already a transaction client.
      */
     async saveMany(objs: DeepPartial<T>[], options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
-        const start = this.logger.startPerformLog("run saveMany");
-
         try {
             this.logger.logDebug(`Saving ${objs.length} record(s) individually inside a transaction`);
 
@@ -452,12 +429,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 return saved;
             });
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "saveMany");
         }
     }
@@ -497,8 +470,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      *   in a transaction with an appropriate isolation level (e.g., `SERIALIZABLE`).
      */
     async deleteManyReturning(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
-        const start = this.logger.startPerformLog("run deleteManyReturning");
-
         try {
             const prismaWhere = this.parseWhere(where);
             const findArg = {
@@ -533,12 +504,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 }
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "deleteManyReturning");
         }
     }
@@ -577,8 +544,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         obj: DeepPartial<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T[]> {
-        const start = this.logger.startPerformLog("run updateManyReturning");
-
         try {
             this.assertReturningManySupported("updateManyReturning");
 
@@ -607,12 +572,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 });
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "updateManyReturning");
         }
     }
@@ -644,8 +605,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const db = options?.db ?? this.prisma;
         const args = options?.args ?? [];
 
-        const start = this.logger.startPerformLog(`run raw query (modifying: ${modifying})`);
-
         try {
             this.logger.logDebug("Running raw query:", { query, args, modifying });
 
@@ -653,12 +612,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 ? await db.$executeRawUnsafe(query, ...args)
                 : await db.$queryRawUnsafe(query, ...args);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "query");
         }
     }
@@ -702,8 +657,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         objs: DeepPartial<T>[],
         options?: WithIgnoreConflicts<SimpleAdapterMethodOptions<T>>,
     ): Promise<T[]> {
-        const start = this.logger.startPerformLog("run createManyReturning");
-
         try {
             this.assertReturningManySupported("createManyReturning");
             this.assertIgnoreConflictsSupported("createManyReturning", options?.ignoreConflicts);
@@ -736,12 +689,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 });
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "createManyReturning");
         }
     }
