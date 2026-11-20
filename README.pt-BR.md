@@ -457,11 +457,11 @@ await userRepository.transaction(async tx => {
 
 ## Logging
 
-O adapter usa o `VSLogger` (de `vsrepo`) internamente: todo método loga uma linha `DEBUG` com o arg resolvido do Prisma, além de logs de performance de início/fim. Configure `logLevel` na config do construtor pra controlar a verbosidade; o default é `VSLogLevel.WARN`.
+O adapter usa o `VSLogger` (de `vsrepo`) internamente: cada operação loga uma linha `DEBUG` com o arg resolvido do Prisma, e a construção loga uma linha `INFO` com a config resolvida. Configure `logLevel` na config do construtor pra controlar a verbosidade; o default é `VSLogLevel.WARN`.
 
 ## Requisitos
 
-- `vsrepo` ^3.0.0-dev.5
+- `vsrepo` ^3.0.0-dev.6
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - Um banco PostgreSQL, CockroachDB, MySQL, SQLite ou SQL Server (todos cobertos pelos testes de integração)

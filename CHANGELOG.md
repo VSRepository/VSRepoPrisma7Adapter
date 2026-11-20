@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ---
 
-## [Unreleased]
+## [2.0.0-dev.5] - 2026-11-20
 
 ### Added
 
@@ -15,11 +15,16 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- **`vsrepo` peer dependency bumped to `^3.0.0-dev.6`**, the version that adds `relationsOptions`
+- **`vsrepo` peer dependency bumped to `^3.0.0-dev.6`**, the version that adds `relationsOptions` and drops the perform-log helpers (`startPerformLog`/`endPerformLog`) from `VSLogger`
+- **Performance logs are no longer emitted.** The adapter stopped opening/closing a performance log around each operation, since `VSLogger` no longer exposes `startPerformLog`/`endPerformLog`, so the start/end logs and their slow-operation warning are gone. It still logs the `DEBUG` line with the resolved Prisma arg for each method, and `logLevel` keeps controlling the verbosity
+
+### Performance
+
+- **`createManyReturning` and `updateManyReturning` return early when nothing was written.** When `select`/`relations` is used, they run `createManyAndReturn`/`updateManyAndReturn` with only the primary key and then re-read the records by id inside a transaction. If the first call returns no records (`ignoreConflicts` skipped every row, or `where` matched nothing), they now return `[]` right away instead of issuing a `findMany` with an empty `in: []` list
 
 ---
 
-## [Unreleased] (Português)
+## [2.0.0-dev.5] - 2026-11-20 (Português)
 
 ### Adicionado
 
@@ -28,7 +33,12 @@ All notable changes to this project will be documented in this file.
 
 ### Alterado
 
-- **Peer dependency `vsrepo` atualizada para `^3.0.0-dev.6`**, a versão que adiciona o `relationsOptions`
+- **Peer dependency `vsrepo` atualizada para `^3.0.0-dev.6`**, a versão que adiciona o `relationsOptions` e remove os helpers de log de performance (`startPerformLog`/`endPerformLog`) do `VSLogger`
+- **Os logs de performance não são mais emitidos.** O adapter parou de abrir/fechar um log de performance em volta de cada operação, já que o `VSLogger` não expõe mais `startPerformLog`/`endPerformLog`, então os logs de início/fim e o aviso de operação lenta deixaram de existir. Ele continua logando a linha `DEBUG` com o arg resolvido do Prisma em cada método, e o `logLevel` continua controlando a verbosidade
+
+### Desempenho
+
+- **`createManyReturning` e `updateManyReturning` retornam cedo quando nada foi escrito.** Quando `select`/`relations` é usado, eles rodam `createManyAndReturn`/`updateManyAndReturn` só com a chave primária e depois releem os registros por id dentro de uma transaction. Se a primeira chamada não retorna nenhum registro (`ignoreConflicts` pulou todas as linhas, ou o `where` não casou com nada), agora retornam `[]` na hora, em vez de rodar um `findMany` com uma lista `in: []` vazia
 
 ---
 
