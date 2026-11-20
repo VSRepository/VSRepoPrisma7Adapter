@@ -37,6 +37,7 @@ Implementação de `VSRepoAdapter` para o [VSRepository v3](https://github.com/V
         - [`allowOmitPk`](#allowomitpk)
         - [Como cada método de escrita resolve relations](#como-cada-método-de-escrita-resolve-relations)
     - [`relations` nas options (leitura)](#relations-nas-options-leitura)
+    - [`relationsOptions` nas options (leitura)](#relationsoptions-nas-options-leitura)
 - [Métodos atômicos e de agregação](#métodos-atômicos-e-de-agregação)
 - [`createMany`/`createManyReturning`/`updateMany`/`updateManyReturning` não suportam nested writes](#createmanycreatemanyreturningupdatemanyupdatemanyreturning-não-suportam-nested-writes)
 - [Limitações por provider](#limitações-por-provider)
@@ -282,9 +283,58 @@ Esse objeto é transformado num `include` do Prisma pelo adapter (`parsePrismaIn
 O `select` e o `relations` que você passa nas options são transformados num `select` do Prisma (`parsePrismaSelect`) e num `include` (`parsePrismaInclude`), respectivamente. Quando o `select` é fornecido, o `include` derivado do `relations` é descartado (fica `undefined`), porque o Prisma não permite combinar `include` e `select` na mesma query. Ou seja, se você já estiver usando `select`, o objeto `relations` vira redundante — por isso ele é facultativo. Essa é a lógica resolvida (de `resolveReadArg`):
 
 ```ts
-const prismaSelect = options.select && parsePrismaSelect(options.select);
-const prismaInclude = prismaSelect ? undefined : options.relations && parsePrismaInclude(options.relations);
+const prismaSelect = options.select && parsePrismaSelect(options.select, options.relationsOptions, provider);
+const prismaInclude = prismaSelect
+    ? undefined
+    : options.relations && parsePrismaInclude(options.relations, options.relationsOptions, provider);
 ```
+
+### `relationsOptions` nas options (leitura)
+
+`relations` (ou `select`) decide **quais** relations são carregadas; `relationsOptions` decide **quais registros** delas voltam, filtrados, ordenados e paginados. Cada chave é um campo de relação e aceita `where`, `order` e `pagination` (os dois últimos só em relações to-many), além de um `relationsOptions` aninhado para as relations da relation:
+
+```typescript
+const user = await userRepository.get("...", {
+    relations: { posts: { comments: true } },
+    relationsOptions: {
+        posts: {
+            where: { published: true },
+            order: { createdAt: "desc" },
+            pagination: { limit: 10 },
+            relationsOptions: { comments: { pagination: { limit: 5 } } },
+        },
+    },
+});
+```
+
+O adapter coloca as options de cada relation ao lado dela, dentro do `include` do Prisma (ou dentro do `select`, quando ele é fornecido):
+
+| `relationsOptions`                       | Prisma                                                      |
+| ---------------------------------------- | ----------------------------------------------------------- |
+| `where`                                  | `where` (mesmos operadores do `where` principal)            |
+| `order`                                  | `orderBy`                                                   |
+| `pagination.offset` / `pagination.limit` | `skip` / `take`                                             |
+| `relationsOptions` aninhado              | os args das relations dentro do `include`/`select` aninhado |
+
+O exemplo acima é resolvido para:
+
+```ts
+include: {
+    posts: {
+        where: { published: true },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        include: { comments: { take: 5 } },
+    },
+},
+```
+
+O que vale saber:
+
+- O `where` filtra os registros **carregados**, não os pais: todo pai continua voltando, só com os registros relacionados que casam. Para filtrar os pais pelas relations deles, use `_some`/`_every`/`_none` no `where` principal.
+- O `pagination` vale **por registro pai** (`take: 10` traz até 10 posts de cada usuário).
+- As options de uma relation que não está sendo carregada são ignoradas: o `relationsOptions` configura uma relation, não a carrega.
+- Funciona com `select` também (os args ficam ao lado do `select` da relation) e em todo método que aceita `select`/`relations`. `createManyReturning`, `updateManyReturning` e `deleteManyReturning` o aplicam na releitura dos registros.
 
 ## Métodos atômicos e de agregação
 
@@ -330,6 +380,8 @@ Alguns recursos que esse adapter usa não estão disponíveis em todo banco. O a
 | `ignoreConflicts: true` no `createMany` / `createManyReturning` (o `skipDuplicates` do Prisma)                    | PostgreSQL, MySQL, CockroachDB  | SQL Server, SQLite                                                                                                                                                                        |
 
 O operador `like` não é suportado em nenhum provider — o Prisma não tem equivalente, então o adapter lança `NOT_SUPPORTED`. Use `contains`, `startsWith` ou `endsWith`.
+
+O `where` de uma relation (`relationsOptions`) é checado igual ao `where` principal, então o `ignoreCase` dentro dele segue a primeira linha da tabela.
 
 > Essas limitações vêm do próprio Prisma, não do adapter — veja a [doc de case sensitivity](https://www.prisma.io/docs/orm/v7/reference/prisma-client-reference#mode) e a [referência de CRUD](https://www.prisma.io/docs/orm/v7/prisma-client/queries/crud) do Prisma pra mais detalhes. O adapter é coberto por testes de integração em PostgreSQL, MySQL, SQLite, SQL Server e CockroachDB.
 
@@ -405,11 +457,11 @@ await userRepository.transaction(async tx => {
 
 ## Logging
 
-O adapter usa o `VSLogger` (de `vsrepo`) internamente: todo método loga uma linha `DEBUG` com o arg resolvido do Prisma, além de logs de performance de início/fim. Configure `logLevel` na config do construtor pra controlar a verbosidade; o default é `VSLogLevel.WARN`.
+O adapter usa o `VSLogger` (de `vsrepo`) internamente: cada operação loga uma linha `DEBUG` com o arg resolvido do Prisma, e a construção loga uma linha `INFO` com a config resolvida. Configure `logLevel` na config do construtor pra controlar a verbosidade; o default é `VSLogLevel.WARN`.
 
 ## Requisitos
 
-- `vsrepo` ^3.0.0-dev.5
+- `vsrepo` ^3.0.0-dev.6
 - `@prisma/client` ^7.10.1
 - Node.js `>=22`
 - Um banco PostgreSQL, CockroachDB, MySQL, SQLite ou SQL Server (todos cobertos pelos testes de integração)

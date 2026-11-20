@@ -119,12 +119,19 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         return db ? db[this.modelName] : (this.prisma as any)[this.modelName];
     }
 
-    /** Resolves the "read" part of a Prisma arg: select/include/orderBy/pagination. */
+    /**
+     * Resolves the "read" part of a Prisma arg: select/include/orderBy/pagination. The
+     * `relationsOptions` (where/order/pagination of the loaded relations) are applied inside
+     * the `select` or `include`, whichever is used (`select` wins over `relations`).
+     */
     private resolveReadArg(options: AdapterMethodOptions<T> | undefined): PrismaArgLike {
         if (!options) return {};
 
-        const prismaSelect = options.select && parsePrismaSelect(options.select);
-        const prismaInclude = prismaSelect ? undefined : options.relations && parsePrismaInclude(options.relations);
+        const prismaSelect =
+            options.select && parsePrismaSelect(options.select, options.relationsOptions, this.provider);
+        const prismaInclude = prismaSelect
+            ? undefined
+            : options.relations && parsePrismaInclude(options.relations, options.relationsOptions, this.provider);
 
         return {
             select: prismaSelect,
@@ -133,6 +140,18 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
             skip: options.pagination?.offset,
             take: options.pagination?.limit,
         };
+    }
+
+    /**
+     * `resolveReadArg` for the methods that take `SimpleAdapterMethodOptions`: only `select`, `relations`
+     * and `relationsOptions` are read, never `order`/`pagination`.
+     */
+    private resolveSimpleReadArg(options: SimpleAdapterMethodOptions<T> | undefined): PrismaArgLike {
+        return this.resolveReadArg({
+            select: options?.select,
+            relations: options?.relations,
+            relationsOptions: options?.relationsOptions,
+        });
     }
 
     /** Parses a `where` for this adapter's provider (rejecting what the provider cannot run). */
@@ -245,24 +264,19 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
         const methodName = `${operation}One`;
-        const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
             const arg = {
-                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                ...this.resolveSimpleReadArg(options),
                 where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await this.getPrismaRepository(options?.db).update(arg);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -275,23 +289,18 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
         const methodName = `${operation}Many`;
-        const start = this.logger.startPerformLog(`run ${methodName}`);
 
         try {
             const arg = {
                 where: this.parseWhere(where),
                 data: { [field]: { [operation]: value } },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await this.getPrismaRepository(options?.db).updateMany(arg);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -325,7 +334,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         where?: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<number | null> {
-        const start = this.logger.startPerformLog(`run ${operation}`);
         const aggKey = `_${operation}`;
 
         try {
@@ -333,16 +341,12 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 where: this.parseWhere(where) as any,
                 [aggKey]: { [field]: true },
             };
-            this.logger.logDebug(`Resolved Prisma arg for ${operation}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${operation}:`, arg);
 
             const aggResult = await this.getPrismaRepository(options?.db).aggregate(arg);
 
-            this.logger.endPerformLog(start);
-
             return this.toNullableNumber(aggResult?.[aggKey]?.[field as string]);
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, operation);
         }
     }
@@ -365,19 +369,13 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     }
 
     private async execMethod<R>(fn: () => Promise<R>, methodName: string, arg: object): Promise<R> {
-        const start = this.logger.startPerformLog(`run ${methodName}`);
-
         try {
-            this.logger.logDebug(`Resolved Prisma arg for ${methodName}`, arg);
+            this.logger.logDebug(`Resolved Prisma arg for ${methodName}:`, arg);
 
             const result = await fn();
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, methodName);
         }
     }
@@ -416,7 +414,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async save(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const objAny = obj as PlainObject;
         const pkValue = objAny[this.pkName];
-        const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+        const readArg = this.resolveSimpleReadArg(options);
         const repo = this.getPrismaRepository(options?.db);
         const { create, update } = this.parseData(objAny, true);
 
@@ -437,8 +435,6 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      * reusing `options.db` when it's already a transaction client.
      */
     async saveMany(objs: DeepPartial<T>[], options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
-        const start = this.logger.startPerformLog("run saveMany");
-
         try {
             this.logger.logDebug(`Saving ${objs.length} record(s) individually inside a transaction`);
 
@@ -452,12 +448,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 return saved;
             });
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "saveMany");
         }
     }
@@ -465,7 +457,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     /** Deletes a single record matching `where`. */
     async delete(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
         };
 
@@ -497,12 +489,10 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      *   in a transaction with an appropriate isolation level (e.g., `SERIALIZABLE`).
      */
     async deleteManyReturning(where: VSRepoWhere<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T[]> {
-        const start = this.logger.startPerformLog("run deleteManyReturning");
-
         try {
             const prismaWhere = this.parseWhere(where);
             const findArg = {
-                ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+                ...this.resolveSimpleReadArg(options),
                 where: prismaWhere,
             };
 
@@ -512,7 +502,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 (findArg.select as any)[this.pkName] = true;
             }
 
-            this.logger.logDebug("Resolved Prisma args for deleteManyReturning", findArg);
+            this.logger.logDebug("Resolved Prisma args for deleteManyReturning:", findArg);
 
             const result = await this.runTransactional(options?.db, async tx => {
                 const repo = this.getPrismaRepository(tx);
@@ -533,12 +523,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 }
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "deleteManyReturning");
         }
     }
@@ -547,7 +533,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async update(where: VSRepoWhere<T>, obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { update } = this.parseData(obj);
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
             data: update,
         };
@@ -577,15 +563,13 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         obj: DeepPartial<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T[]> {
-        const start = this.logger.startPerformLog("run updateManyReturning");
-
         try {
             this.assertReturningManySupported("updateManyReturning");
 
-            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const readArg = this.resolveSimpleReadArg(options);
             const arg = { where: this.parseWhere(where), data: this.stripRelationFields(obj as PlainObject) };
 
-            this.logger.logDebug("Resolved Prisma args for updateManyReturning", { ...readArg, ...arg });
+            this.logger.logDebug("Resolved Prisma args for updateManyReturning:", { ...readArg, ...arg });
 
             let result: any;
 
@@ -596,6 +580,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                     const repo = this.getPrismaRepository(tx);
                     const updated = await repo.updateManyAndReturn({ ...arg, select: { [this.pkName]: true } });
 
+                    if (updated.length === 0) return [];
+
                     const idsUpdated = updated.map((_: any) => _[this.pkName]);
 
                     return await repo.findMany({
@@ -605,12 +591,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 });
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "updateManyReturning");
         }
     }
@@ -642,21 +624,15 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const db = options?.db ?? this.prisma;
         const args = options?.args ?? [];
 
-        const start = this.logger.startPerformLog(`run raw query (modifying: ${modifying})`);
-
         try {
-            this.logger.logDebug("Running raw query", { query, args, modifying });
+            this.logger.logDebug("Running raw query:", { query, args, modifying });
 
             const result = modifying
                 ? await db.$executeRawUnsafe(query, ...args)
                 : await db.$queryRawUnsafe(query, ...args);
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "query");
         }
     }
@@ -665,7 +641,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     async create(obj: DeepPartial<T>, options?: SimpleAdapterMethodOptions<T>): Promise<T> {
         const { create } = this.parseData(obj);
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             data: create,
         };
 
@@ -700,19 +676,17 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         objs: DeepPartial<T>[],
         options?: WithIgnoreConflicts<SimpleAdapterMethodOptions<T>>,
     ): Promise<T[]> {
-        const start = this.logger.startPerformLog("run createManyReturning");
-
         try {
             this.assertReturningManySupported("createManyReturning");
             this.assertIgnoreConflictsSupported("createManyReturning", options?.ignoreConflicts);
 
-            const readArg = this.resolveReadArg({ select: options?.select, relations: options?.relations });
+            const readArg = this.resolveSimpleReadArg(options);
             const arg = {
                 data: objs.map(obj => this.stripRelationFields(obj as PlainObject)),
                 skipDuplicates: options?.ignoreConflicts,
             };
 
-            this.logger.logDebug("Resolved Prisma args for createManyReturning", { ...readArg, ...arg });
+            this.logger.logDebug("Resolved Prisma args for createManyReturning:", { ...readArg, ...arg });
 
             let result: any;
 
@@ -723,6 +697,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                     const repo = this.getPrismaRepository(tx);
                     const created = await repo.createManyAndReturn({ ...arg, select: { [this.pkName]: true } });
 
+                    if (created.length === 0) return [];
+
                     const idsCreated = created.map((_: any) => _[this.pkName]);
 
                     return await repo.findMany({
@@ -732,12 +708,8 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
                 });
             }
 
-            this.logger.endPerformLog(start);
-
             return result;
         } catch (error) {
-            this.logger.endPerformLog(start);
-
             throw mapPrismaError(error, "createManyReturning");
         }
     }
@@ -781,7 +753,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
         const parsedUpdate = this.parseData(update).update;
 
         const arg = {
-            ...this.resolveReadArg({ select: options?.select, relations: options?.relations }),
+            ...this.resolveSimpleReadArg(options),
             where: this.parseWhere(where),
             create: parsedCreate,
             update: parsedUpdate,

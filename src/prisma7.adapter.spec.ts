@@ -1645,4 +1645,253 @@ describe("VSRepoPrisma7Adapter", () => {
             await expect(adapter.sum("age")).rejects.toMatchObject({ code: AdapterErrorCode.CONNECTION_FAILED });
         });
     });
+
+    describe("relationsOptions", () => {
+        const relationsOptions = {
+            posts: {
+                where: { title: { startsWith: "a" } },
+                order: { title: "DESC" as const },
+                pagination: { offset: 5, limit: 10 },
+            },
+        };
+        const postsArgs = { where: { title: { startsWith: "a" } }, orderBy: { title: "desc" }, skip: 5, take: 10 };
+
+        it("should apply the relationsOptions inside the include", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany({}, { relations: { posts: true, address: true }, relationsOptions });
+
+            expect(user.findMany).toHaveBeenCalledWith({
+                where: {},
+                include: { posts: postsArgs, address: true },
+            });
+        });
+
+        it("should apply the relationsOptions to nested relations", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany(
+                {},
+                {
+                    relations: { posts: { comments: true } } as any,
+                    relationsOptions: {
+                        posts: {
+                            pagination: { limit: 3 },
+                            relationsOptions: { comments: { pagination: { limit: 2 } } },
+                        },
+                    } as any,
+                },
+            );
+
+            expect(user.findMany).toHaveBeenCalledWith({
+                where: {},
+                include: { posts: { take: 3, include: { comments: { take: 2 } } } },
+            });
+        });
+
+        it("should apply the relationsOptions inside the select, which wins over relations", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany(
+                {},
+                { select: { id: true, posts: true }, relations: { address: true }, relationsOptions },
+            );
+
+            const arg = user.findMany!.mock.calls[0]![0];
+            expect(arg.select).toEqual({ id: true, posts: postsArgs });
+            expect(arg.include).toBeUndefined();
+        });
+
+        it("should keep the nested select of a selected relation next to its args", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany({}, { select: { id: true, posts: { title: true } }, relationsOptions });
+
+            expect(user.findMany!.mock.calls[0]![0].select).toEqual({
+                id: true,
+                posts: { ...postsArgs, select: { title: true } },
+            });
+        });
+
+        it("should not mix the relationsOptions with the order and pagination of the root", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany(
+                {},
+                {
+                    relations: { posts: true },
+                    relationsOptions,
+                    order: { name: "asc" },
+                    pagination: { offset: 1, limit: 2 },
+                },
+            );
+
+            expect(user.findMany).toHaveBeenCalledWith({
+                where: {},
+                include: { posts: postsArgs },
+                orderBy: { name: "asc" },
+                skip: 1,
+                take: 2,
+            });
+        });
+
+        it("should ignore the relationsOptions of relations that are not being loaded", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany({}, { relations: { address: true }, relationsOptions });
+
+            expect(user.findMany).toHaveBeenCalledWith({ where: {}, include: { address: true } });
+        });
+
+        it("should do nothing when no relation is loaded", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany({}, { relationsOptions });
+
+            const arg = user.findMany!.mock.calls[0]![0];
+            expect(arg.include).toBeUndefined();
+            expect(arg.select).toBeUndefined();
+        });
+
+        it("should accept a where on a to-one relation that can be null", async () => {
+            const { adapter, user } = setup();
+            user.findMany!.mockResolvedValue([]);
+
+            await adapter.findMany(
+                {},
+                { relations: { address: true }, relationsOptions: { address: { where: { street: "Rua A" } } } },
+            );
+
+            expect(user.findMany).toHaveBeenCalledWith({
+                where: {},
+                include: { address: { where: { street: "Rua A" } } },
+            });
+        });
+
+        it.each([
+            ["findOne", "findFirst", (a: any, o: any) => a.findOne({ id: "1" }, o)],
+            ["findOneOrThrow", "findFirstOrThrow", (a: any, o: any) => a.findOneOrThrow({ id: "1" }, o)],
+        ])("should apply the relationsOptions on %s", async (_method, delegateMethod, run) => {
+            const { adapter, user } = setup();
+            (user as any)[delegateMethod].mockResolvedValue({ id: "1" });
+
+            await run(adapter, { relations: { posts: true }, relationsOptions });
+
+            expect((user as any)[delegateMethod]).toHaveBeenCalledWith({
+                where: { id: "1" },
+                include: { posts: postsArgs },
+            });
+        });
+
+        it.each([
+            ["create", "create", (a: any, o: any) => a.create({ name: "x" }, o)],
+            ["save (create)", "create", (a: any, o: any) => a.save({ name: "x" }, o)],
+            ["save (upsert)", "upsert", (a: any, o: any) => a.save({ id: "1", name: "x" }, o)],
+            ["update", "update", (a: any, o: any) => a.update({ id: "1" }, { name: "x" }, o)],
+            ["delete", "delete", (a: any, o: any) => a.delete({ id: "1" }, o)],
+            ["incrementOne", "update", (a: any, o: any) => a.incrementOne("age", 1, { id: "1" }, o)],
+        ])("should apply the relationsOptions on %s", async (_method, delegateMethod, run) => {
+            const { adapter, user } = setup();
+            (user as any)[delegateMethod].mockResolvedValue({ id: "1" });
+
+            await run(adapter, { relations: { posts: true }, relationsOptions });
+
+            expect((user as any)[delegateMethod].mock.calls[0][0].include).toEqual({ posts: postsArgs });
+        });
+
+        it("should apply the relationsOptions on the re-read of createManyReturning and updateManyReturning", async () => {
+            const { adapter, txUser } = setup();
+            txUser.createManyAndReturn!.mockResolvedValue([{ id: "1" }]);
+            txUser.updateManyAndReturn!.mockResolvedValue([{ id: "1" }]);
+            txUser.findMany!.mockResolvedValue([]);
+
+            await adapter.createManyReturning([{ name: "A" }], { relations: { posts: true }, relationsOptions });
+            await adapter.updateManyReturning({}, { name: "B" }, { relations: { posts: true }, relationsOptions });
+
+            expect(txUser.findMany).toHaveBeenNthCalledWith(1, {
+                include: { posts: postsArgs },
+                where: { id: { in: ["1"] } },
+            });
+            expect(txUser.findMany).toHaveBeenNthCalledWith(2, {
+                include: { posts: postsArgs },
+                where: { id: { in: ["1"] } },
+            });
+            expect(txUser.createManyAndReturn!.mock.calls[0]![0].include).toBeUndefined();
+            expect(txUser.updateManyAndReturn!.mock.calls[0]![0].include).toBeUndefined();
+        });
+
+        it("should apply the relationsOptions on the re-read of deleteManyReturning", async () => {
+            const { adapter, txUser } = setup();
+            txUser.findMany!.mockResolvedValue([{ id: "1", posts: [] }]);
+            txUser.deleteMany!.mockResolvedValue({ count: 1 });
+
+            await adapter.deleteManyReturning({}, { relations: { posts: true }, relationsOptions });
+
+            expect(txUser.findMany).toHaveBeenCalledWith({ where: {}, include: { posts: postsArgs } });
+        });
+
+        it("should not read the relationsOptions on count, exists, updateMany and deleteMany", async () => {
+            const { adapter, user } = setup();
+            user.count!.mockResolvedValue(1);
+            user.updateMany!.mockResolvedValue({ count: 1 });
+            user.deleteMany!.mockResolvedValue({ count: 1 });
+
+            await adapter.count({});
+            await adapter.exists({});
+            await adapter.updateMany({}, { name: "x" }, { relationsOptions } as any);
+            await adapter.deleteMany({}, { relationsOptions } as any);
+
+            for (const method of ["count", "updateMany", "deleteMany"] as const) {
+                for (const [arg] of user[method]!.mock.calls) {
+                    expect(arg).not.toHaveProperty("include");
+                    expect(arg).not.toHaveProperty("select");
+                    expect(arg).not.toHaveProperty("relationsOptions");
+                }
+            }
+        });
+
+        describe("where of a relation", () => {
+            const insensitiveOptions = { posts: { where: { title: { contains: "a", ignoreCase: true } } } };
+
+            it.each(["postgresql", "cockroachdb"] as const)("should translate ignoreCase on %s", async provider => {
+                const { adapter, user } = setup({ provider });
+                user.findMany!.mockResolvedValue([]);
+
+                await adapter.findMany({}, { relations: { posts: true }, relationsOptions: insensitiveOptions });
+
+                expect(user.findMany).toHaveBeenCalledWith({
+                    where: {},
+                    include: { posts: { where: { title: { contains: "a", mode: "insensitive" } } } },
+                });
+            });
+
+            it.each(["mysql", "sqlite", "sqlserver"] as const)(
+                "should reject ignoreCase on %s with NOT_SUPPORTED before touching the database",
+                async provider => {
+                    const { adapter, user } = setup({ provider });
+
+                    await expect(
+                        adapter.findMany({}, { relations: { posts: true }, relationsOptions: insensitiveOptions }),
+                    ).rejects.toMatchObject({ code: AdapterErrorCode.NOT_SUPPORTED });
+                    expect(user.findMany).not.toHaveBeenCalled();
+                },
+            );
+
+            it("should not reject an unsupported where of a relation that is not being loaded", async () => {
+                const { adapter, user } = setup({ provider: "sqlite" });
+                user.findMany!.mockResolvedValue([]);
+
+                await adapter.findMany({}, { relations: { address: true }, relationsOptions: insensitiveOptions });
+
+                expect(user.findMany).toHaveBeenCalledWith({ where: {}, include: { address: true } });
+            });
+        });
+    });
 });

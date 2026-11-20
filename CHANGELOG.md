@@ -6,6 +6,42 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev.5] - 2026-11-20
+
+### Added
+
+- **`relationsOptions` support.** `relationsOptions` (added to `AdapterMethodOptions` in `vsrepo`) now filters, orders and paginates the related records loaded through `relations` or `select`: each relation's `where`, `order` and `pagination` become `where`, `orderBy`, `skip` and `take` next to it in the Prisma `include`/`select`, and the nested `relationsOptions` are applied to the nested relations. It works in every method that accepts `select`/`relations`, and `createManyReturning`, `updateManyReturning` and `deleteManyReturning` apply it when they re-read the records
+- The `where` of a relation goes through the same parser as the top-level `where`, so provider limitations apply to it (`ignoreCase` throws `NOT_SUPPORTED` outside PostgreSQL and CockroachDB). A `where` on a to-one relation is only accepted by Prisma when the relation is optional, which is also what `vsrepo`'s types allow. The options of a relation that isn't being loaded are ignored
+
+### Changed
+
+- **`vsrepo` peer dependency bumped to `^3.0.0-dev.6`**, the version that adds `relationsOptions` and drops the perform-log helpers (`startPerformLog`/`endPerformLog`) from `VSLogger`
+- **Performance logs are no longer emitted.** The adapter stopped opening/closing a performance log around each operation, since `VSLogger` no longer exposes `startPerformLog`/`endPerformLog`, so the start/end logs and their slow-operation warning are gone. It still logs the `DEBUG` line with the resolved Prisma arg for each method, and `logLevel` keeps controlling the verbosity
+
+### Performance
+
+- **`createManyReturning` and `updateManyReturning` return early when nothing was written.** When `select`/`relations` is used, they run `createManyAndReturn`/`updateManyAndReturn` with only the primary key and then re-read the records by id inside a transaction. If the first call returns no records (`ignoreConflicts` skipped every row, or `where` matched nothing), they now return `[]` right away instead of issuing a `findMany` with an empty `in: []` list
+
+---
+
+## [2.0.0-dev.5] - 2026-11-20 (Português)
+
+### Adicionado
+
+- **Suporte ao `relationsOptions`.** O `relationsOptions` (adicionado ao `AdapterMethodOptions` no `vsrepo`) agora filtra, ordena e pagina os registros relacionados carregados via `relations` ou `select`: o `where`, `order` e `pagination` de cada relation viram `where`, `orderBy`, `skip` e `take` ao lado dela no `include`/`select` do Prisma, e os `relationsOptions` aninhados são aplicados nas relations aninhadas. Funciona em todo método que aceita `select`/`relations`, e `createManyReturning`, `updateManyReturning` e `deleteManyReturning` o aplicam quando releem os registros
+- O `where` de uma relation passa pelo mesmo parser do `where` principal, então as limitações por provider valem para ele (`ignoreCase` lança `NOT_SUPPORTED` fora do PostgreSQL e do CockroachDB). Um `where` em uma relação to-one só é aceito pelo Prisma quando a relação é opcional, que é também o que os tipos do `vsrepo` permitem. As options de uma relation que não está sendo carregada são ignoradas
+
+### Alterado
+
+- **Peer dependency `vsrepo` atualizada para `^3.0.0-dev.6`**, a versão que adiciona o `relationsOptions` e remove os helpers de log de performance (`startPerformLog`/`endPerformLog`) do `VSLogger`
+- **Os logs de performance não são mais emitidos.** O adapter parou de abrir/fechar um log de performance em volta de cada operação, já que o `VSLogger` não expõe mais `startPerformLog`/`endPerformLog`, então os logs de início/fim e o aviso de operação lenta deixaram de existir. Ele continua logando a linha `DEBUG` com o arg resolvido do Prisma em cada método, e o `logLevel` continua controlando a verbosidade
+
+### Desempenho
+
+- **`createManyReturning` e `updateManyReturning` retornam cedo quando nada foi escrito.** Quando `select`/`relations` é usado, eles rodam `createManyAndReturn`/`updateManyAndReturn` só com a chave primária e depois releem os registros por id dentro de uma transaction. Se a primeira chamada não retorna nenhum registro (`ignoreConflicts` pulou todas as linhas, ou o `where` não casou com nada), agora retornam `[]` na hora, em vez de rodar um `findMany` com uma lista `in: []` vazia
+
+---
+
 ## [2.0.0-dev.4] - 2026-11-15
 
 ### Fixed
