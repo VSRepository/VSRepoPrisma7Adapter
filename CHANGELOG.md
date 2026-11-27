@@ -6,6 +6,32 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.0.0-dev.6] - 2026-11-26
+
+### Added
+
+- **`UnwrapReference` in the atomic methods' `value` type.** `incrementOne`, `decrementOne`, `multiplyOne`, `divideOne` and their `Many` counterparts now type `value` as `NonNullable<UnwrapReference<T[K]>>`, so a numeric field wrapped in an ORM reference (e.g. MikroORM's `Reference`/`ScalarReference`, now supported by `vsrepo`) accepts the wrapped number. Plain numeric fields are unaffected, since `UnwrapReference` is a no-op for them
+
+### Changed
+
+- **`vsrepo` peer dependency bumped to `^3.0.0-dev.7`**, the version that adds the `CollectionLike`/`ReferenceLike` structural types and the `UnwrapReference` helper
+- **`mapPrismaError` no longer keeps a Prisma-error allowlist.** The `prismaErrorNamesSet`/`isPrismaError` guard was removed; the switch now handles the five recognized Prisma error classes and returns the original error in the `default` branch, so anything that isn't a recognized Prisma error (application errors such as an `UnauthorizedException` thrown inside a transaction, or an unknown error) passes through untouched. Removing the `default` wrap, which was unreachable, keeps the runtime behavior the same
+
+---
+
+## [2.0.0-dev.6] - 2026-11-26 (Português)
+
+### Adicionado
+
+- **`UnwrapReference` no tipo `value` dos métodos atômicos.** `incrementOne`, `decrementOne`, `multiplyOne`, `divideOne` e as versões `Many` agora tipam `value` como `NonNullable<UnwrapReference<T[K]>>`, então um campo numérico embrulhado num reference de ORM (ex.: `Reference`/`ScalarReference` do MikroORM, agora suportado pela `vsrepo`) aceita o número embrulhado. Campos numéricos comuns não mudam, já que o `UnwrapReference` é no-op pra eles
+
+### Alterado
+
+- **Peer dependency `vsrepo` atualizada para `^3.0.0-dev.7`**, a versão que adiciona os tipos estruturais `CollectionLike`/`ReferenceLike` e o helper `UnwrapReference`
+- **O `mapPrismaError` não mantém mais uma allowlist de erros do Prisma.** O guard `prismaErrorNamesSet`/`isPrismaError` foi removido; o switch agora trata as cinco classes de erro reconhecidas do Prisma e devolve o erro original no branch `default`, então qualquer coisa que não seja um erro reconhecido do Prisma (erros da aplicação, como um `UnauthorizedException` lançado dentro de uma transaction, ou um erro desconhecido) segue intacta. A remoção do wrap `default`, que era inalcançável, mantém o mesmo comportamento em runtime
+
+---
+
 ## [2.0.0-dev.5] - 2026-11-20
 
 ### Added

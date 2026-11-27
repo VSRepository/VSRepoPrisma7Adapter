@@ -10,6 +10,7 @@ import {
     NumericKeys,
     RestrictAdapterMethodOptions,
     SimpleAdapterMethodOptions,
+    UnwrapReference,
     VSLogger,
     VSLogLevel,
     VSRepoAdapter,
@@ -259,7 +260,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private async atomicUpdate<K extends NumericKeys<T>>(
         operation: "increment" | "decrement" | "multiply" | "divide",
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
@@ -284,7 +285,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
     private async atomicUpdateMany<K extends NumericKeys<T>>(
         operation: "increment" | "decrement" | "multiply" | "divide",
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
@@ -768,7 +769,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async incrementOne<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
@@ -781,7 +782,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async decrementOne<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
@@ -794,7 +795,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async multiplyOne<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
@@ -807,7 +808,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async divideOne<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: SimpleAdapterMethodOptions<T>,
     ): Promise<T> {
@@ -820,7 +821,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async incrementMany<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
@@ -833,7 +834,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async decrementMany<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
@@ -846,7 +847,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async multiplyMany<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
@@ -859,7 +860,7 @@ export class VSRepoPrisma7Adapter<T, K extends Prisma7ClientLike = Prisma7Client
      */
     async divideMany<K extends NumericKeys<T>>(
         field: K,
-        value: NonNullable<T[K]>,
+        value: NonNullable<UnwrapReference<T[K]>>,
         where: VSRepoWhere<T>,
         options?: RestrictAdapterMethodOptions<T>,
     ): Promise<CountResult> {
